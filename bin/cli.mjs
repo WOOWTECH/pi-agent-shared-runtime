@@ -8,6 +8,8 @@ import { initialize, latest } from '../src/runtime.mjs';
 import { synchronize } from '../src/sync.mjs';
 
 const [action = 'status', ...args] = process.argv.slice(2), loc = locations();
+// Resource scans in the worker must not start another bootstrap worker.
+process.env.PI_SHARED_INTERNAL = '1';
 try {
   if (action === 'launch-web') await launchWeb(args, loc);
   else if (action === 'install-host') {

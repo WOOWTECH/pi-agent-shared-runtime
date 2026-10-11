@@ -96,7 +96,14 @@ export async function boot({ current = false, watch = false, loc = locations() }
       }
     }
     const convo = await ensureConversation(key, loc, cookie);
-    if (convo.initialized) return { status: 'already-initialized', sessionId: convo.sessionId };
+    if (convo.initialized) {
+      const clis = readJSON(path.join(loc.state, 'clis.json'));
+      const missing = ['claude', 'codex'].some(name => !clis[name]?.binary || !fs.existsSync(clis[name].binary));
+      const refreshed = missing ? await initialize(loc)
+        : await locked(path.join(loc.state, 'initialize.lock'), () => synchronize({ cwd: loc.home, loc }));
+      if (refreshed.busy) return { status: 'busy' };
+      return { status: 'already-initialized', sessionId: convo.sessionId, repairedMissingClis: missing };
+    }
     const init = await initialize(loc);
     if (init.busy) return { status: 'busy' };
     const prompt = '這是使用者已授權的 Claude Code / Codex 環境初始化對話。安裝及同步已由插件的確定性程式執行。' +

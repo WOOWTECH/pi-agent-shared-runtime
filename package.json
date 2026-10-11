@@ -1,6 +1,6 @@
 {
   "name": "@woowtech/pi-agent-shared-runtime",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Install missing Claude Code and Codex CLIs, share Pi skills and tools through MCP, and initialize Pi Web automatically.",
   "type": "module",
   "license": "MIT",
