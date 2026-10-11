@@ -6,7 +6,15 @@ Pi agent / Pi Web 插件。缺少時才安裝官方 Claude Code、Codex CLI，�
 
 前置條件：Linux、Node.js 22.19+、npm、相容 Pi SDK、Pi Web。使用同一個持久化 HOME 與 Pi agent data directory。CLI 各自使用官方登入，不複製 Pi provider token。
 
-解開發布包到持久化目錄，於該目錄執行：
+建議直接從公開 GitHub 安裝：在 Pi Web → Settings → Plugins → Add plugin，輸入以下來源後按 Install：
+
+```text
+git:https://github.com/WOOWTECH/pi-agent-shared-runtime
+```
+
+頁面顯示 Loaded 後，不必先聊天或手動執行初始化；插件會建立「Claude / Codex 環境初始化」對話。於 Pi Web 終端執行 `claude` 或 `codex`。
+
+若使用本機發布包，解開到持久化目錄，於該目錄執行：
 
 ```bash
 npm install --omit=dev --legacy-peer-deps
@@ -30,7 +38,7 @@ Pi Web 插件管理介面也可以安裝上述本機 package 路徑。npm 安裝
 - Claude `~/.claude.json` 與 Codex `~/.codex/config.toml` 加入 `pi_shared_runtime` stdio MCP。其他設定保留，使用者修改同名 MCP 時保留並回報。
 - MCP bridge 使用原生 Pi SDK 載入 extensions、執行工具及 permission hooks；原始 MCP adapter 維持自己的 OAuth、憑證及工具規則，bridge 不複製憑證。
 - 可共享的是工具及 skills。Pi 專用畫面、快捷鍵、provider、對話編排與需要互動 UI 的工具，無法轉換成 Claude/Codex 原生插件；遠端 MCP 仍可能有認證、DNS、服務故障。報告區分載入與呼叫成功。
-- 停用／移除本 package 後自動監控停止，受管 launcher 仍可委派真正 Pi Web；保留 CLI、登入及既有共享項目。要清理可檢視 state 中的 owned links，勿刪除使用者自行建立的項目。
+- 停用／移除本 package 後自動安裝與同步暫停；idle controller 保留以偵測 GUI 重新啟用，Web 服務結束才退出，受管 launcher 仍可委派真正 Pi Web；保留 CLI、登入及既有共享項目。要清理可檢視 state 中的 owned links，勿刪除使用者自行建立的項目。
 
 ## 操作與診斷
 
@@ -50,3 +58,5 @@ npm test
 技能名稱均由目前來源決定；grill-me、brainstorming 只是同步示例，本插件不下載任何示例技能。
 
 官方文件：[Codex CLI](https://developers.openai.com/codex/cli)、[Codex MCP](https://developers.openai.com/codex/mcp)、[Claude Code](https://code.claude.com/docs/en/setup)、[Claude MCP](https://code.claude.com/docs/en/mcp)。
+
+Pi 5 完整 GUI 流程與修復紀錄：[PI5-E2E.md](PI5-E2E.md)。

@@ -45,6 +45,7 @@
     "npm-shrinkwrap.json",
     "VERIFICATION.md",
     "README.md",
-    "LICENSE"
+    "LICENSE",
+    "PI5-E2E.md"
   ]
 }
