@@ -1,0 +1,50 @@
+{
+  "name": "@woowtech/pi-agent-shared-runtime",
+  "version": "0.1.0",
+  "description": "Install missing Claude Code and Codex CLIs, share Pi skills and tools through MCP, and initialize Pi Web automatically.",
+  "type": "module",
+  "license": "MIT",
+  "keywords": [
+    "pi-package",
+    "pi-web",
+    "codex",
+    "claude-code",
+    "mcp"
+  ],
+  "bin": {
+    "pi-shared-runtime": "./bin/cli.mjs"
+  },
+  "pi": {
+    "extensions": [
+      "./extensions/index.ts"
+    ]
+  },
+  "scripts": {
+    "postinstall": "node bin/cli.mjs install-host --auto",
+    "test": "node --test tests/*.test.mjs"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.30.0",
+    "pi-mcp-adapter": "^2.26.1",
+    "smol-toml": "^1.4.2",
+    "yaml": "^2.8.0"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": ">=1.0.0",
+    "typebox": "*"
+  },
+  "engines": {
+    "node": ">=22.19.0"
+  },
+  "files": [
+    "bin",
+    "src",
+    "extensions",
+    "tests",
+    "install.sh",
+    "npm-shrinkwrap.json",
+    "VERIFICATION.md",
+    "README.md",
+    "LICENSE"
+  ]
+}
