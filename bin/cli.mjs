@@ -1,4 +1,5 @@
 #!/usr/bin/env node
+import { health } from '../src/health.mjs';
 import path from 'node:path';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
@@ -11,7 +12,8 @@ const [action = 'status', ...args] = process.argv.slice(2), loc = locations();
 // Resource scans in the worker must not start another bootstrap worker.
 process.env.PI_SHARED_INTERNAL = '1';
 try {
-  if (action === 'launch-web') await launchWeb(args, loc);
+  if (action === 'health') { const result = health(loc); console.log(JSON.stringify(result)); if (!result.healthy) process.exitCode = 1; }
+  else if (action === 'launch-web') await launchWeb(args, loc);
   else if (action === 'install-host') {
     console.log(JSON.stringify(await installHost({ auto: args.includes('--auto'), loc })));
     if (args.includes('--auto')) {
@@ -46,5 +48,5 @@ try {
     child.once('error', e => { console.error(safeError(e)); process.exitCode = 1; });
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
     child.once('exit', c => process.exit(c ?? 1));
-  } else throw new Error('Use install-host, launch-web, boot, initialize, sync, status, or run-cli');
+  } else throw new Error('Use install-host, launch-web, boot, initialize, sync, status, health, or run-cli');
 } catch (e) { console.error('[pi-shared-runtime]', JSON.stringify(safeError(e))); process.exitCode = 1; }

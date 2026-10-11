@@ -60,3 +60,5 @@ npm test
 官方文件：[Codex CLI](https://developers.openai.com/codex/cli)、[Codex MCP](https://developers.openai.com/codex/mcp)、[Claude Code](https://code.claude.com/docs/en/setup)、[Claude MCP](https://code.claude.com/docs/en/mcp)。
 
 Pi 5 完整 GUI 流程與修復紀錄：[PI5-E2E.md](PI5-E2E.md)。
+
+商業部署的版本固定、health、回退與驗收邊界：[COMMERCIAL-READINESS.md](docs/COMMERCIAL-READINESS.md)。

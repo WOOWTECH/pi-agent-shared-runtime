@@ -6,6 +6,20 @@ import os from 'node:os';
 import { spawn } from 'node:child_process';
 import { ROOT } from '../src/common.mjs';
 
+function stopWorker(t, child, home) {
+  child.unref();
+  t.after(async () => {
+    if (child.exitCode === null && child.signalCode === null) {
+      await new Promise(resolve => {
+        const deadline=setTimeout(()=>{child.kill('SIGKILL');resolve();},2000);
+        child.once('exit',()=>{clearTimeout(deadline);resolve();});
+        child.kill('SIGTERM');
+      });
+    }
+    fs.rmSync(home,{recursive:true,force:true});
+  });
+}
+
 test('GUI settings-only disable pauses work and enable resumes sync without resource reload', async t => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-watch-reactivate-'));
   const data = path.join(home, 'agent'), state = path.join(data, 'shared-runtime');
@@ -15,7 +29,7 @@ test('GUI settings-only disable pauses work and enable resumes sync without reso
   const env = { ...process.env, HOME: home, PI_SHARED_HOME: home, PI_SHARED_DATA_DIR: data, PI_SHARED_INTERNAL: '1' };
   const child = spawn(process.execPath, ['--input-type=module', '-e',
     `import {watchSources} from ${JSON.stringify(path.join(ROOT, 'src/watch.mjs'))}; await watchSources(${JSON.stringify({ home, data, state })}, undefined, {intervalMs:50});`], { env, stdio: 'ignore' });
-  t.after(() => child.kill('SIGTERM'));
+  stopWorker(t,child,home);
   async function until(check) { const end=Date.now()+10000; while(Date.now()<end) { if(check())return;await new Promise(r=>setTimeout(r,50)); } assert.fail('watch state timed out'); }
   const status = () => { try { return JSON.parse(fs.readFileSync(path.join(state, 'watch-state.json'))).status; } catch {} };
   await until(() => status() === 'paused');
@@ -26,10 +40,36 @@ test('GUI settings-only disable pauses work and enable resumes sync without reso
   assert.equal(fs.existsSync(target),false);
   // No reload, session event, CLI invocation, or install action here.
   fs.writeFileSync(settings,JSON.stringify({packages:[ROOT]}));
-  await until(()=>fs.existsSync(target));
+  await until(()=>fs.existsSync(target) && status()==='active');
   assert.equal(status(),'active');
   fs.writeFileSync(settings,'{"packages":[]}'); await until(()=>status()==='paused');
   const report=path.join(state,'last-sync.json'), before=fs.readFileSync(report,'utf8');
   fs.writeFileSync(path.join(skill,'SKILL.md'),'changed while disabled');
   await new Promise(r=>setTimeout(r,200)); assert.equal(fs.readFileSync(report,'utf8'),before);
+});
+
+
+for (const brokenAtStartup of [false, true]) test(`watcher survives ${brokenAtStartup ? 'startup' : 'runtime'} partial settings and recovers`, async t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-watch-fault-'));
+  const data=path.join(home,'agent'),state=path.join(data,'shared-runtime');fs.mkdirSync(data);
+  const settings=path.join(data,'settings.json');fs.writeFileSync(settings,brokenAtStartup ? '{"packages":' : JSON.stringify({packages:[ROOT]}));
+  const child=spawn(process.execPath,['--input-type=module','-e',
+    `import {watchSources} from ${JSON.stringify(path.join(ROOT,'src/watch.mjs'))};await watchSources(${JSON.stringify({home,data,state})},undefined,{intervalMs:50});`],
+    {env:{...process.env,HOME:home,PI_SHARED_HOME:home,PI_SHARED_DATA_DIR:data,PI_SHARED_INTERNAL:'1'},stdio:'ignore'});
+  stopWorker(t,child,home);
+  async function until(check){const end=Date.now()+10000;while(Date.now()<end){if(check())return;await new Promise(r=>setTimeout(r,25));}assert.fail('recovery timed out');}
+  const status=()=>{try{return JSON.parse(fs.readFileSync(path.join(state,'watch-state.json'))).status;}catch{}};
+  if (!brokenAtStartup) {
+    await until(()=>status()==='active');
+    fs.writeFileSync(settings,'{"packages":');
+  } else await until(()=>status()==='degraded');
+  await new Promise(r=>setTimeout(r,300));
+  assert.equal(child.exitCode,null,'configuration write must not terminate daemon');
+  assert.equal(status(),'degraded');
+  fs.writeFileSync(settings,JSON.stringify({packages:[ROOT]}));
+  const skill=path.join(data,'skills/recovery-probe');fs.mkdirSync(skill,{recursive:true});
+  fs.writeFileSync(path.join(skill,'SKILL.md'),'---\nname: recovery-probe\ndescription: fixture\n---\nRECOVERED\n');
+  await until(()=>fs.existsSync(path.join(home,'.claude/skills/recovery-probe/SKILL.md')) && status()==='active');
+  assert.equal(status(),'active');
+  assert.equal(fs.existsSync(path.join(state,'watch-error.json')),false);
 });

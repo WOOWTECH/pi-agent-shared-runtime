@@ -33,7 +33,7 @@ const builtins = [
   { name: 'Skill', description: 'Load the shared Pi skill by exact name, including companion dependencies such as grilling. Returns instructions only.', inputSchema: { type: 'object', properties: { skill: { type: 'string' } }, required: ['skill'] } },
   { name: 'pi_shared_search', description: 'Discover Pi extension tools by name or description, including MCP dispatch tools. Unknown/failed extensions are reported separately.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }
 ];
-const server = new Server({ name: 'pi-agent-shared-runtime', version: '0.1.0' }, { capabilities: { tools: {} } });
+const server = new Server({ name: 'pi-agent-shared-runtime', version: readJSON(path.join(path.dirname(import.meta.filename), '../package.json')).version }, { capabilities: { tools: {} } });
 let queue = Promise.resolve();
 function serial(work) {
   const result = queue.then(work); queue = result.catch(() => {}); return result;
@@ -49,7 +49,7 @@ server.setRequestHandler(CallToolRequestSchema, request => serial(async () => {
     if (name === 'pi_shared_status') {
       const sync = readJSON(path.join(loc.state, 'last-sync.json'));
       const init = readJSON(path.join(loc.state, 'last-initialize.json'));
-      return output({ cli: init.cli, status: init.status, skills: r.loader.getSkills().skills.map(s => s.name),
+      return output({ cli: init.cli, status: init.status, watcher: readJSON(path.join(loc.state, 'watch-state.json')), skills: r.loader.getSkills().skills.map(s => s.name),
         tools: publicTools(r).map(t => t.name), packages: sync.configuredPackages, plugins: sync.plugins, mcp: sync.mcpNames,
         extensionErrors: (r.extensionsResult.errors || []).map(e => ({ path: e.path, reason: 'loading failed' })), runtimeErrors: r.errors,
         limits: ['Headless execution: interactive UI/session commands may be unavailable', 'Discovered tools are not proof of remote authentication or successful calls'] });

@@ -16,7 +16,9 @@ export function installMissing(loc = locations(), executor = run) {
         const npm = commandPath('npm');
         if (!npm) throw new Error('npm unavailable; Node 22.19+ and npm are prerequisites');
         // No update call when a usable installation already exists.
-        executor(npm, ['install', '--global', '--prefix', path.join(loc.home, '.local'), packageName], { timeout: 600000 });
+        const pin = process.env[`PI_SHARED_${name.toUpperCase()}_VERSION`];
+        if (pin && !/^\d+\.\d+\.\d+(?:-[a-zA-Z0-9.-]+)?$/.test(pin)) throw new Error('CLI version pin must be an exact version');
+        executor(npm, ['install', '--global', '--prefix', path.join(loc.home, '.local'), pin ? `${packageName}@${pin}` : packageName], { timeout: 600000 });
         binary = local; installed = true;
       }
       const version = executor(binary, ['--version'], { timeout: 20000 });

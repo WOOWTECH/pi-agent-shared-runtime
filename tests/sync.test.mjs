@@ -116,3 +116,15 @@ test('profile hooks are idempotent and preserve existing shell customizations', 
   const text = fs.readFileSync(path.join(dir, '.bashrc'), 'utf8');
   assert.ok(text.startsWith('export USER_FLAG=yes')); assert.equal(text.match(/BEGIN pi-agent-shared-runtime/g).length, 1);
 });
+
+test('missing CLI honors exact deployment pins and rejects mutable tags before installation', t => {
+  const dir=fixture(t),bins=path.join(dir,'bin');fs.mkdirSync(bins);
+  fs.writeFileSync(path.join(bins,'npm'),'#!/bin/sh\n',{mode:0o755});
+  const old={PATH:process.env.PATH,PI_SHARED_CLAUDE_VERSION:process.env.PI_SHARED_CLAUDE_VERSION,PI_SHARED_CODEX_VERSION:process.env.PI_SHARED_CODEX_VERSION};
+  Object.assign(process.env,{PATH:bins,PI_SHARED_CLAUDE_VERSION:'2.1.296',PI_SHARED_CODEX_VERSION:'latest'});
+  t.after(()=>{for(const [k,v]of Object.entries(old))if(v===undefined)delete process.env[k];else process.env[k]=v;});
+  const calls=[];const result=installMissing({home:dir,state:path.join(dir,'state')},(cmd,args)=>{calls.push(args);return 'fixture';});
+  assert.equal(result.claude.status,'available');assert.equal(result.codex.status,'failed');
+  const installs=calls.filter(a=>a[0]==='install');assert.equal(installs.length,1);
+  assert.equal(installs[0].at(-1),'@anthropic-ai/claude-code@2.1.296');
+});
