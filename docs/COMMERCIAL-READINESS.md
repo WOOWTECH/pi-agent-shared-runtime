@@ -62,3 +62,5 @@ watch-error.json 存目前錯誤，恢復後刪除；監控系統可定期讀取
 本輪 Node 22.23.3 與 Node 24.0.0 均完成 24/24 測試；Node24 清理 hook 原先返回 child.kill 布林值，造成測試挂起，改為不返回值後完整結束。CI 有測試逾時與 job timeout。實際 hosted Actions 執行結果另列，不能用本機測試代替。
 
 效能量測：隔離 2,000 檔案、30 個重疊來源、15 次掃描；canonical directory 去重後 median 537.27→19.23ms（約 28 倍），stat 呼叫 960,075→30,060（減少約97%）。這是來源掃描 fixture 結果，不代表模型延遲或端到端吞吐提升。performance-probe.mjs 可重跑；回歸測試驗證修改偵測與循環目錄。
+
+最終驗證：Node22/24 全套25項通過；GitHub Actions 兩個Node版本完成成功。Pi5 GUI 更新到0.1.2，GUI終端隔離故障恢復、MCP實際呼叫及來源去重5項測試通過；同一2,000檔案fixture在Pi5 median17.50ms、p95 24.77ms。正式health healthy=true、無issues，既有CLI版本保持不變。完整實機截圖及環境識別資料未公開。
