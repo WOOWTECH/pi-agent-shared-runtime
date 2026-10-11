@@ -43,7 +43,8 @@ export function installProfiles(loc = locations()) {
   }
   fs.mkdirSync(path.join(loc.home, '.local/pi-shared/bin'), { recursive: true });
   for (const name of ['claude', 'codex']) {
-    const binary = readJSON(path.join(loc.state, 'clis.json'))[name]?.binary || commandPath(name, process.env, [path.join(loc.home, '.local/pi-shared/bin')]) || path.join(loc.home, '.local/bin', name);
+    const recorded = loc.state ? readJSON(path.join(loc.state, 'clis.json')) : {};
+    const binary = recorded[name]?.binary || commandPath(name, process.env, [path.join(loc.home, '.local/pi-shared/bin')]) || path.join(loc.home, '.local/bin', name);
     const wrapper = `#!/usr/bin/env node\nimport { spawn } from 'node:child_process';\nimport { existsSync } from 'node:fs';\nconst cli=${JSON.stringify(path.join(ROOT, 'bin/cli.mjs'))};\nconst present=existsSync(cli);\nconst child = spawn(present?${JSON.stringify(process.execPath)}:${JSON.stringify(binary)}, present?[cli, 'run-cli', '${name}', ...process.argv.slice(2)]:process.argv.slice(2), {stdio:'inherit'});\nchild.on('error',()=>process.exit(1));\nfor (const signal of ['SIGINT','SIGTERM','SIGHUP']) process.on(signal,()=>child.kill(signal));\nchild.on('exit',code=>process.exit(code??1));\n`;
     atomic(path.join(loc.home, '.local/pi-shared/bin', name), wrapper, 0o755);
   }
