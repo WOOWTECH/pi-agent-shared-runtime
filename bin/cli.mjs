@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import path from 'node:path';
+import fs from 'node:fs';
 import { spawn } from 'node:child_process';
 import { locations, readJSON, ROOT, enabled, safeError, commandPath, locked } from '../src/common.mjs';
 import { installHost, launchWeb, boot } from '../src/host.mjs';
@@ -11,6 +12,19 @@ try {
   if (action === 'launch-web') await launchWeb(args, loc);
   else if (action === 'install-host') {
     console.log(JSON.stringify(await installHost({ auto: args.includes('--auto'), loc })));
+    if (args.includes('--auto')) {
+      fs.mkdirSync(loc.state, { recursive: true });
+      const log = fs.openSync(path.join(loc.state, 'bootstrap.log'), 'a', 0o600);
+      const child = spawn(process.execPath, [path.join(ROOT, 'bin/cli.mjs'), 'wait-activation'],
+        { detached: true, stdio: ['ignore', log, log], env: process.env });
+      child.unref(); fs.closeSync(log);
+    }
+  } else if (action === 'wait-activation') {
+    // Pi persists its package entry after npm postinstall returns.
+    for (let attempt = 0; attempt < 120; attempt++) {
+      if (enabled(loc)) { console.log(JSON.stringify(await boot({ current: true, watch: true, loc }))); break; }
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    }
   } else if (action === 'boot') {
     console.log(JSON.stringify(await boot({ current: args.includes('--current'), watch: !args.includes('--once'), loc })));
   } else if (action === 'initialize') console.log(JSON.stringify(await initialize(loc), null, 2));
