@@ -21,7 +21,7 @@ export async function installHost({ auto = false, loc = locations() } = {}) {
   if (fs.existsSync(shim) && !fs.readFileSync(shim, 'utf8').includes('pi-agent-shared-runtime launcher')) {
     return { status: 'conflict', reason: 'Existing user pi-web launcher preserved; use pi-shared-runtime launch-web' };
   }
-  const source = `#!/usr/bin/env node\n// pi-agent-shared-runtime launcher\nimport {spawn} from 'node:child_process';\nconst child=spawn(${JSON.stringify(process.execPath)},[${JSON.stringify(path.join(ROOT, 'bin/cli.mjs'))},'launch-web',...process.argv.slice(2)],{stdio:'inherit'});\nfor(const s of ['SIGINT','SIGTERM','SIGHUP'])process.on(s,()=>child.kill(s));\nchild.on('exit',c=>process.exit(c??1));\n`;
+  const source = `#!/usr/bin/env node\n// pi-agent-shared-runtime launcher\nimport {spawn} from 'node:child_process';\nimport {existsSync} from 'node:fs';\nconst cli=${JSON.stringify(path.join(ROOT, 'bin/cli.mjs'))};\nconst present=existsSync(cli);\nconst child=spawn(present?${JSON.stringify(process.execPath)}:${JSON.stringify(real)},present?[cli,'launch-web',...process.argv.slice(2)]:process.argv.slice(2),{stdio:'inherit'});\nchild.on('error',()=>process.exit(1));\nfor(const s of ['SIGINT','SIGTERM','SIGHUP'])process.on(s,()=>child.kill(s));\nchild.on('exit',c=>process.exit(c??1));\n`;
   atomic(shim, source, 0o755);
   saveJSON(metadata, { realWeb: real, shim, root: ROOT, installedAt: new Date().toISOString() });
   return { status: 'installed', shim, realWeb: real };
