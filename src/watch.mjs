@@ -31,14 +31,23 @@ export function fingerprint(loc) {
   for (const plugin of readJSON(path.join(loc.state, 'last-sync.json')).plugins || []) walk(path.dirname(plugin.path));
   return digest(rows);
 }
-export async function watchSources(loc, webPid) {
+export async function watchSources(loc, webPid, { intervalMs = 15000 } = {}) {
   await locked(path.join(loc.state, 'watch.lock'), () => new Promise(resolve => {
-    let last = fingerprint(loc), running = false;
+    let last = fingerprint(loc), running = false, mode;
+    function state(status) {
+      if (status === mode) return;
+      mode = status;
+      saveJSON(path.join(loc.state, 'watch-state.json'), { status, date: new Date().toISOString() });
+    }
+    state('active');
     const timer = setInterval(async () => {
-      if (!enabled(loc)) { clearInterval(timer); resolve(); return; }
       if (webPid) {
         try { process.kill(webPid, 0); } catch { clearInterval(timer); resolve(); return; }
       }
+      // The GUI enable switch only changes settings. Keep the lightweight
+      // controller idle while disabled; no installs, models or source scans.
+      if (!enabled(loc)) { last = null; state('paused'); return; }
+      state('active');
       if (running) return;
       const next = fingerprint(loc);
       if (next === last) return;
@@ -49,7 +58,7 @@ export async function watchSources(loc, webPid) {
       }
       catch (e) { saveJSON(path.join(loc.state, 'watch-error.json'), safeError(e)); }
       finally { running = false; }
-    }, 15000);
+    }, intervalMs);
     const stop = () => { clearInterval(timer); resolve(); };
     process.once('SIGTERM', stop); process.once('SIGINT', stop);
   }));

@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { atomic, commandPath, locations, ROOT, readJSON, saveJSON, enabled, digest, locked, safeError } from './common.mjs';
-import { initialize } from './runtime.mjs';
+import { initialize, installProfiles } from './runtime.mjs';
 import { synchronize } from './sync.mjs';
 
 export async function installHost({ auto = false, loc = locations() } = {}) {
@@ -99,6 +99,7 @@ export async function boot({ current = false, watch = false, loc = locations() }
     if (convo.initialized) {
       const clis = readJSON(path.join(loc.state, 'clis.json'));
       const missing = ['claude', 'codex'].some(name => !clis[name]?.binary || !fs.existsSync(clis[name].binary));
+      if (!missing) installProfiles(loc);
       const refreshed = missing ? await initialize(loc)
         : await locked(path.join(loc.state, 'initialize.lock'), () => synchronize({ cwd: loc.home, loc }));
       if (refreshed.busy) return { status: 'busy' };
