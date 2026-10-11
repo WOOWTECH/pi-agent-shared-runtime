@@ -36,7 +36,7 @@ export function enabled(loc = locations()) {
   return (settings.packages || []).some(p => {
     const source = typeof p === 'string' ? p : p.source;
     if (!source) return false;
-    const matches = source.includes(NAME) || path.resolve(loc.data, source) === ROOT;
+    const matches = source.includes(NAME) || /^git:https:\/\/github\.com\/WOOWTECH\/pi-agent-shared-runtime(?:\.git)?(?:[#@].*)?$/.test(source) || path.resolve(loc.data, source) === ROOT;
     return matches && !(typeof p === 'object' && Array.isArray(p.extensions) && !p.extensions.length);
   });
 }
