@@ -56,13 +56,28 @@ export function safeError(error) {
   return { type: error?.constructor?.name || 'Error', code: typeof error?.code === 'string' ? error.code : undefined,
     message: String(error?.message || error).replace(/https?:\/\/\S+/g, '[endpoint]').replace(/(?:Bearer\s+|sk-|ghp_|gho_)[\w.-]+/g, '[credential]').slice(0, 280) };
 }
+function processIdentity(pid) {
+  try {
+    const stat = fs.readFileSync(`/proc/${pid}/stat`, 'utf8');
+    return { startTime: stat.slice(stat.lastIndexOf(')') + 2).split(' ')[19],
+      pidNamespace: fs.readlinkSync(`/proc/${pid}/ns/pid`) };
+  } catch { return {}; }
+}
 export async function locked(file, action) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   try { fs.mkdirSync(file); }
   catch (e) {
     if (e.code !== 'EEXIST') throw e;
     const owner = readJSON(path.join(file, 'owner.json'));
-    try { if (owner.pid) process.kill(owner.pid, 0); else throw new Error('missing owner'); }
+    try {
+      if (!owner.pid) throw new Error('missing owner');
+      process.kill(owner.pid, 0);
+      const current = processIdentity(owner.pid);
+      if ((owner.startTime && current.startTime && owner.startTime !== current.startTime) ||
+          (owner.pidNamespace && current.pidNamespace && owner.pidNamespace !== current.pidNamespace)) {
+        throw new Error('lock process was replaced');
+      }
+    }
     catch (e) {
       if (e.code === 'EPERM') return { busy: true };
       // Allow a just-created lock time to acquire an owner record.
@@ -72,6 +87,6 @@ export async function locked(file, action) {
     }
     return { busy: true };
   }
-  saveJSON(path.join(file, 'owner.json'), { pid: process.pid });
+  saveJSON(path.join(file, 'owner.json'), { pid: process.pid, ...processIdentity(process.pid) });
   try { return await action(); } finally { fs.rmSync(file, { recursive: true, force: true }); }
 }
