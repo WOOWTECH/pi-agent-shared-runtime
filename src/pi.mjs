@@ -33,6 +33,10 @@ export async function loadResources(cwd = process.cwd(), loc = locations()) {
   const authoritative = pi.loadSkills({ cwd, agentDir: loc.data, skillPaths: paths, includeDefaults: false });
   const loader = new pi.DefaultResourceLoader({ cwd, agentDir: loc.data, settingsManager,
     additionalExtensionPaths: process.env.PI_SHARED_BRIDGE === '1' ? [path.join(ROOT, 'extensions/global-mcp.ts')] : [],
+    // Skills are resolved from the user's full Pi package settings above, but
+    // this sharing runtime must not activate unrelated Pi plugin extensions.
+    // In bridge mode, only the explicitly added global MCP adapter is loaded.
+    noExtensions: process.env.PI_SHARED_BRIDGE === '1',
     skillsOverride: () => authoritative });
   await loader.reload();
   return { pi, loader, settingsManager };

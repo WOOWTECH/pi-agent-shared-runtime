@@ -26,12 +26,14 @@ async function runtime() {
 const output = (value, isError = false) => ({ content: [{ type: 'text', text: typeof value === 'string' ? value : JSON.stringify(value) }], isError });
 function safeName(name) { return /^[\w-]{1,60}$/.test(name) ? name : `${name.replace(/[^\w-]/g, '_').slice(0,45)}_${digest(name).slice(0,8)}`; }
 function publicTools(r) {
-  return r.session.getAllTools().filter(t => t.exposure !== 'hidden' && !['read', 'write', 'edit', 'bash', 'powershell', 'grep', 'find', 'ls', 'pi_shared_initialize', 'pi_shared_status'].includes(t.name));
+  // Expose only tools created from the Pi Web global mcp.json adapter. Other
+  // Pi extensions/plugins are intentionally outside the cross-agent surface.
+  return r.session.getAllTools().filter(t => t.name.startsWith('pi_global_') && t.exposure !== 'hidden');
 }
 const builtins = [
-  { name: 'pi_shared_status', description: 'Read Pi shared skills, plugins, MCP configuration names and initialization status. No installation or mutations.', inputSchema: { type: 'object', properties: {} } },
+  { name: 'pi_shared_status', description: 'Read shared Pi skills, global MCP configuration names and initialization status. No installation or mutations.', inputSchema: { type: 'object', properties: {} } },
   { name: 'Skill', description: 'Load the shared Pi skill by exact name, including companion dependencies such as grilling. Returns instructions only.', inputSchema: { type: 'object', properties: { skill: { type: 'string' } }, required: ['skill'] } },
-  { name: 'pi_shared_search', description: 'Discover Pi extension tools by name or description, including MCP dispatch tools. Unknown/failed extensions are reported separately.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }
+  { name: 'pi_shared_search', description: 'Search configured Pi Web global MCP tools by name or description.', inputSchema: { type: 'object', properties: { query: { type: 'string' } }, required: ['query'] } }
 ];
 const server = new Server({ name: 'pi-agent-shared-runtime', version: readJSON(path.join(path.dirname(import.meta.filename), '../package.json')).version }, { capabilities: { tools: {} } });
 let queue = Promise.resolve();
@@ -50,8 +52,7 @@ server.setRequestHandler(CallToolRequestSchema, request => serial(async () => {
       const sync = readJSON(path.join(loc.state, 'last-sync.json'));
       const init = readJSON(path.join(loc.state, 'last-initialize.json'));
       return output({ cli: init.cli, status: init.status, watcher: readJSON(path.join(loc.state, 'watch-state.json')), skills: r.loader.getSkills().skills.map(s => s.name),
-        tools: publicTools(r).map(t => t.name), packages: sync.configuredPackages, plugins: sync.plugins, mcp: sync.mcpNames,
-        extensionErrors: (r.extensionsResult.errors || []).map(e => ({ path: e.path, reason: 'loading failed' })), runtimeErrors: r.errors,
+        tools: publicTools(r).map(t => t.name), mcp: sync.mcpNames, runtimeErrors: r.errors,
         limits: ['Headless execution: interactive UI/session commands may be unavailable', 'Discovered tools are not proof of remote authentication or successful calls'] });
     }
     if (name === 'Skill') {

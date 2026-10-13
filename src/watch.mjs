@@ -24,7 +24,7 @@ export function fingerprint(loc) {
   for (const file of ['settings.json', 'mcp.json']) {
     try { const s = fs.statSync(path.join(loc.data, file)); rows.push([file, s.mtimeMs, s.size]); } catch {}
   }
-  for (const dir of ['skills', 'plugins', 'extensions']) walk(path.join(loc.data, dir));
+  walk(path.join(loc.data, 'skills'));
   const settings = readJSON(path.join(loc.data, 'settings.json'));
   for (const item of settings.packages || []) {
     const source = typeof item === 'string' ? item : item.source;
@@ -32,7 +32,6 @@ export function fingerprint(loc) {
   }
   const sync = readJSON(path.join(loc.state, 'last-sync.json'));
   for (const skill of sync.skills || []) walk(path.dirname(skill.source));
-  for (const plugin of sync.plugins || []) walk(path.dirname(plugin.path));
   return digest(rows);
 }
 export async function watchSources(loc, webPid, { intervalMs = 15000 } = {}) {
