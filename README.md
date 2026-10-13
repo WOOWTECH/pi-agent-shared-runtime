@@ -1,6 +1,6 @@
 # Pi Agent Shared Runtime
 
-Pi agent / Pi Web 插件。缺少時才安裝官方 Claude Code、Codex CLI，讓 Pi Web 的登入 shell 可以執行 `claude` / `codex`，並共享目前啟用的 Pi skills、MCP 與插件工具。
+Pi agent / Pi Web 插件。缺少時才安裝官方 Claude Code、Codex CLI，讓 Pi Web 的登入 shell 可以執行 `claude` / `codex`，並共享 Pi skills 與已設定的全域 MCP。
 
 ## 安裝
 
@@ -33,11 +33,11 @@ Pi Web 插件管理介面也可以安裝上述本機 package 路徑。安裝本�
 
 - Pi Web 服務啟動時靜默執行安裝與同步，不建立 session、不送出 prompt。結果寫入 `$PI_CODING_AGENT_DIR/shared-runtime/last-initialize.json`；使用者可在 Pi 內執行 `/shared-runtime` 查看狀態。
 - CLI 已存在就保留版本；只有找不到 CLI 才以 npm 安裝官方套件。登入狀態不足時回報，使用者執行 `claude auth login` / `codex login`。
-- Pi settings/packages 是權威來源。原始技能目錄透過 symbolic link 共用，文件與附屬資源不複製；新增、更新、移除受管技能會同步。既有使用者檔案與同名連結不接管、不刪除；衝突列入報告。
-- 每 15 秒檢查來源 metadata；設定、技能、已載入插件來源變更會同步。執行 CLI 前也同步目前 project。這不是定時模型對話。
+- Pi settings/packages 是技能來源。原始技能目錄透過 symbolic link 共用，文件與附屬資源不複製；新增、更新、移除受管技能會同步。既有使用者檔案與同名連結不接管、不刪除；衝突列入報告。
+- 每 15 秒檢查 Pi 設定、全域 MCP 與技能來源；執行 CLI 前也同步目前 project。這不是定時模型對話。
 - Claude `~/.claude.json` 與 Codex `~/.codex/config.toml` 加入 `pi_shared_runtime` stdio MCP。其他設定保留，使用者修改同名 MCP 時保留並回報。
-- MCP bridge 使用原生 Pi SDK 載入 extensions、執行工具及 permission hooks；原始 MCP adapter 維持自己的 OAuth、憑證及工具規則，bridge 不複製憑證。
-- 可共享的是工具及 skills。Pi 專用畫面、快捷鍵、provider、對話編排與需要互動 UI 的工具，無法轉換成 Claude/Codex 原生插件；遠端 MCP 仍可能有認證、DNS、服務故障。報告區分載入與呼叫成功。
+- MCP bridge 只載入 Pi Web 全域設定的 MCP（`/data/pi-agent/mcp.json`），並只暴露這些 MCP 工具。Pi 原生 plugins/extensions 不載入、不轉換；MCP adapter 維持自己的 OAuth、憑證及工具規則，bridge 不複製憑證。
+- 技能以 Pi settings/packages 為來源；Pi Web 全域 MCP 以 `mcp.json` 為共同來源。Pi 專用 UI、快捷鍵、provider 與對話編排不在共用範圍；遠端 MCP 仍可能有認證、DNS、服務故障。報告區分設定載入與實際呼叫成功。
 - 停用／移除本 package 後自動安裝與同步暫停；idle controller 保留以偵測 GUI 重新啟用，Web 服務結束才退出，受管 launcher 仍可委派真正 Pi Web；保留 CLI、登入及既有共享項目。要清理可檢視 state 中的 owned links，勿刪除使用者自行建立的項目。
 
 ## 操作與診斷

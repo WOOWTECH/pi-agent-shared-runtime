@@ -1,6 +1,6 @@
 # 商業部署驗收與營運設計
 
-版本：0.1.2。此版本強化故障恢復、依賴安全與可觀測性；部署對象為 Linux 上同一信任範圍內的 Pi / Claude / Codex 工作環境。
+版本：0.1.4。此版本強化故障恢復、依賴安全與可觀測性，並將分享面限定為 Pi skills 與 Pi Web 全域 MCP；部署對象為 Linux 上同一信任範圍內的 Pi / Claude / Codex 工作環境。
 
 ## 本輪風險與修正
 
@@ -9,7 +9,7 @@
 | GUI/程序寫入設定的暫態無效 JSON，背景同步永久退出 | 原版子程序退出碼 1。新增 startup/runtime 故障注入，改為 degraded 並每周期重試；修復設定後自動 active，成功時清除錯誤狀態 |
 | OAuth client 生產依賴存在高風險公告 | npm audit 原有兩項 high 記錄（同一傳遞漏洞）。adapter 固定 5.2.0，SDK 固定 1.31.0；重新 audit 為零。真實 Pi SDK bridge → adapter → stdio server → tool 呼叫通過 |
 | 同一安裝流程在不同日期下載不同 CLI | 提供精確版本 pin；只有缺少時使用 pin，既有版本不更新。拒絕 latest 等可變標籤 |
-| 舊初始化 ready 不能說明監控程序是否仍活著 | 新增只讀 health，檢查當前同步衝突/extension errors、watch mode 與 owner process identity。非健康時 exit 1 |
+| 舊初始化 ready 不能說明監控程序是否仍活著 | 新增只讀 health，檢查當前同步衝突、watch mode 與 owner process identity。非健康時 exit 1 |
 | 僅靠開發機已有依賴，冷部署可能漏裝 | 隔離目錄 npm ci --ignore-scripts --legacy-peer-deps 與全套測試；CI 補裝固定測試 SDK peers，不執行宿主 postinstall |
 | MCP 回報的程式版本落後 package | bridge 改為讀取實際 package version |
 
@@ -26,7 +26,7 @@ PI_SHARED_CODEX_VERSION=0.162.1
 
 這是目前通過驗證的版本組合，不承諾其未來登入政策/模型配額不變。pins 不強制替換既有 CLI。要升級 CLI，另開明確的升級與回退流程。
 
-前置條件為 Node >=22.19、npm、Pi SDK、Pi Web、可写的持久化 HOME 與 Pi data。每個租戶使用獨立 OS 身分及 volume；同一 HOME 是同一信任邊界，插件不是多租戶安全隔離機制。Pi plugin 有宿主程式執行能力，只安裝可信來源。無互動 bridge 仍保留 Pi validation/permission hooks；不自動 blanket-approve MCP。
+前置條件為 Node >=22.19、npm、Pi SDK、Pi Web、可寫的持久化 HOME 與 Pi data。每個租戶使用獨立 OS 身分及 volume；同一 HOME 是同一信任邊界，安裝套件不是多租戶安全隔離機制。此 bridge 不載入 Pi 原生 plugins/extensions，只讀取全域 MCP 設定；不自動 blanket-approve MCP。
 
 ## 監控與處理
 
@@ -41,7 +41,7 @@ node /path/to/plugin/bin/cli.mjs health
 | watch-degraded / configuration-unreadable | 修復原始設定的 JSON/TOML，不覆寫客戶設定；下一週期重試 |
 | watch-process-unavailable | 保存錯誤、重啟受管 worker 或 Pi Web；不要以 ready 快取當作監控健康 |
 | sync-conflicts | 檢查 ownership；保留使用者項目，採用明確改名/選擇來源 |
-| extension-errors | 修正原 Pi plugin，工具載入失敗不能宣稱共享成功 |
+| global-mcp-errors | 修正 Pi Web 全域 MCP 設定或連線；設定存在不代表遠端呼叫成功 |
 | CLI unavailable | 確認 Node/npm/網路/磁碟，重新初始化；保留登入資料 |
 | 登入或配額不足 | 官方 login 更新與配額處理；不得借用另一代理 token |
 

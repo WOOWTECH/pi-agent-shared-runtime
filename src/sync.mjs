@@ -78,20 +78,12 @@ export async function synchronize({ cwd = process.cwd(), loc = locations(), reso
     startup_timeout_sec: 90, tool_timeout_sec: 120 };
   const claude = mergeClaude(path.join(loc.home, '.claude.json'), claudeEntry, old.claudeHash);
   const codex = mergeCodex(path.join(loc.home, '.codex/config.toml'), codexEntry, old.codexHash);
-  const extensions = loader.getExtensions();
   const report = { date: new Date().toISOString(), cwd, skills: skills.map(s => ({ name: s.name, source: s.filePath })),
     links: links.managed, removed: links.removed, conflicts: [...links.conflicts, ...[claude, codex].filter(x => x.conflict)],
     claudeHash: claude.hash, codexHash: codex.hash,
     skillDiagnostics: found.diagnostics.map(d => ({ type: d.type, message: d.message?.replace(/https?:\/\/\S+/g, '[endpoint]') })),
-    extensionErrors: (extensions.errors || []).map(e => ({ path: e.path, error: 'extension loading failed; check Pi diagnostic' })),
-    plugins: (extensions.extensions || []).map(e => ({ path: e.path,
-      tools: e.tools ? [...e.tools.keys()] : [],
-      commands: e.commands ? [...e.commands.keys()] : [],
-      status: e.tools?.size ? 'loaded-tools-through-Pi-SDK' : 'loaded-no-tool-export',
-      note: 'Pi-specific UI, shortcuts, providers and lifecycle effects are not native Claude/Codex UI plugins' })),
-    configuredPackages: (readJSON(path.join(loc.data, 'settings.json')).packages || []).map(p => typeof p === 'string' ? p : p.source),
     mcpNames: Object.keys(readJSON(path.join(loc.data, 'mcp.json')).mcpServers || {}),
-    bridge: 'Native Pi SDK tool execution; extensions and MCP adapter retain their rules. UI and session orchestration may be unavailable in a headless bridge.' };
+    bridge: 'Shares Pi skills and configured global MCP only. Native Pi plugins/extensions are not loaded by the bridge.' };
   saveJSON(file, report); saveJSON(path.join(loc.state, 'last-sync.json'), report);
   return report;
 }

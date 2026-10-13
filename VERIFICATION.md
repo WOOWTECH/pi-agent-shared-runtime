@@ -1,6 +1,6 @@
 # 初期開發環境實測與能力清單
 
-> 歷史紀錄：以下描述的是舊版啟動對話行為，不能當作目前版本的驗收。0.1.3 改為靜默初始化，需依新版本重新驗證。
+> 歷史紀錄：以下開發機實測不等同目前 HA add-on 實機驗收。舊版曾測試插件工具橋接；目前共用範圍收斂為 skills 與 Pi Web 全域 MCP。
 
 此檔保留初期開發機驗證，不代表 Pi 5 目前配置。最新實機 GUI 結果與已修復問題見 [PI5-E2E.md](PI5-E2E.md)。
 
@@ -60,25 +60,13 @@
 - `workflow-authoring`
 - `workflow-patterns`
 
-## Pi 插件與工具
+## 共用邊界
 
-| 插件 | SDK 工具 | 狀態 |
-|---|---|---|
-| herdr-progress | `herdr_progress` | 已載入；遠端成功僅限上述實測 |
-| pi-subagents | `subagent`, `subagent_wait` | 已載入；遠端成功僅限上述實測 |
-| pi-web-access | `web_search`, `source_check`, `fetch_content`, `get_search_content` | 已載入；遠端成功僅限上述實測 |
-| woowtech-odoo-18 | `mcpScript`, `mcp` | 已載入；遠端成功僅限上述實測 |
-| woowtech-odoo-19 | `odoo19_search`, `odoo19_read`, `odoo19_get_fields`, `odoo19_list_models`, `odoo19_create`, `odoo19_write`, `odoo19_unlink`, `odoo19_call` | 已載入；遠端成功僅限上述實測 |
-| woowtech-github | `woowtech_github` | 已載入；遠端成功僅限上述實測 |
-| n8n-mcp-woowtech-pi |  | 未輸出工具，或僅 Pi UI/command |
-| google-workspace-pi | `google_drive`, `google_forms`, `google_sheets`, `google_docs`, `google_slides` | 已載入；遠端成功僅限上述實測 |
-| woowtech-cloudflare-pi | `cloudflare_api` | 已載入；遠端成功僅限上述實測 |
-| pi-dynamic-workflows | `workflow`, `workflow_control` | 已載入；遠端成功僅限上述實測 |
-| pi-agent-shared-runtime |  | 未輸出工具，或僅 Pi UI/command |
+Pi 原生 plugins/extensions 與其工具不由 bridge 載入或轉換。它們可能依賴 Pi UI、session、provider 或專屬權限生命週期，跨代理分享不穩定。由 Pi Web 全域 MCP 設定提供的 servers 則可透過 MCP bridge 共用。
 
-Bridge 額外提供 `pi_shared_status`、`Skill`、`pi_shared_search`、`pi_global_mcp`、`pi_global_mcpScript`。Pi 內建檔案/shell 工具由 Claude/Codex 自身提供，不重複輸出。
+Pi Web 全域 MCP API 寫入 `/data/pi-agent/mcp.json`；Pi、Claude Code、Codex 的共用 runtime 讀取同一設定來源。bridge 只輸出 `pi_global_*` 工具，不載入 extensions。Skills 由 Pi settings/packages 發現，Claude/Codex 以受管連結讀取同一份 skill 內容。
 
-## 全域 MCP
+## 全域 MCP（開發機歷史實測）
 
 - `cloudflare-api`：配置已共享；本次未完成 OAuth 遠端呼叫驗證
 - `browserless`：已測試連線、19 tools
@@ -86,11 +74,11 @@ Bridge 額外提供 `pi_shared_status`、`Skill`、`pi_shared_search`、`pi_glob
 ## 已知限制與未完成遠端驗證
 
 - 6 個 Paseo 同名技能在 Claude / agents / Codex 各有既有項目，共 18 個衝突。保留使用者內容，因此初始化為 partial；其他技能已同步。
-- n8n extension 沒有輸出工具；先前檢查 endpoint DNS 有問題，不應當作可呼叫。
+- n8n 的 Pi extension 狀態不代表全域 MCP 可呼叫；需在 Pi Web 全域 MCP 中配置並單獨驗證。
 - Odoo18 MCP 先前 endpoint 回應 404；Odoo19 的直接工具本次唯讀實測成功。
 - Cloudflare REST 插件先前缺少 token；全域 Cloudflare OAuth 是否完成須在登入後另測。
-- GitHub、web access、subagents、workflow 等已載入；本次未逐一执行其遠端或寫入操作。
-- Pi UI、快捷鍵、provider 及對話編排不能等同轉成 Claude/Codex 原生插件。
+- 舊版曾將 GitHub、web access、subagents、workflow 等 Pi extension 工具載入 bridge；目前已排除，這些舊測試不代表仍會共享。
+- Pi UI、快捷鍵、provider 及對話編排不在 Claude/Codex 共用範圍。
 - 首次對話是 boot worker 確定性處理後由 Pi 模型回報；需要 Pi 模型憑證，Claude/Codex 的登入保持獨立。
 - 只自動移除本插件 ownership 記錄中的技能連結；既有使用者自行建立的連結不接管。
 

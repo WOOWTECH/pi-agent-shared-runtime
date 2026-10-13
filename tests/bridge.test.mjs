@@ -6,31 +6,21 @@ import path from 'node:path';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { ROOT } from '../src/common.mjs';
-test('external MCP retains validation, blocking hooks and result hooks', async t => {
+
+test('bridge does not load or expose Pi plugin tools', async t => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-shared-bridge-'));
   t.after(() => fs.rmSync(home, { recursive: true, force: true }));
   const data = path.join(home, 'agent'); fs.mkdirSync(data);
-  const extension = path.join(home, 'policy.ts'), marker = path.join(home, 'executed');
-  fs.writeFileSync(extension, `import fs from 'node:fs';
-export default function(pi) {
-  for(const name of ['probe_allowed','probe_blocked'])pi.registerTool({name,label:name,description:'fixture',
-    parameters:{type:'object',properties:{value:{type:'string'}},required:['value']},
-    execute:async()=>{fs.writeFileSync(${JSON.stringify(marker)},'executed');return {content:[{type:'text',text:'native-result'}],details:{}};}});
-  pi.on('tool_call',async e=>e.toolName==='probe_blocked'?{block:true,reason:'fixture-denied'}:undefined);
-  pi.on('tool_result',async e=>e.toolName==='probe_allowed'?{content:[{type:'text',text:'hook-transformed'}]}:undefined);
-}`);
-  fs.writeFileSync(path.join(data,'settings.json'),JSON.stringify({packages:[ROOT],extensions:[extension]}));
-  const client = new Client({name:'policy-probe',version:'1'});
-  t.after(()=>client.close());
-  await client.connect(new StdioClientTransport({command:process.execPath,args:[path.join(ROOT,'bin/bridge.mjs')],cwd:home,
-    stderr:'pipe',env:{...process.env,PI_SHARED_HOME:home,PI_SHARED_DATA_DIR:data,PI_SHARED_BRIDGE:'1'}}));
-  const list=await client.listTools();assert.ok(list.tools.some(x=>x.name==='probe_allowed'));
-  const blocked=await client.callTool({name:'probe_blocked',arguments:{value:'test'}});
-  assert.equal(blocked.isError,true);assert.ok(blocked.content[0].text.includes('fixture-denied'));
-  assert.equal(fs.existsSync(marker),false);
-  const invalid=await client.callTool({name:'probe_allowed',arguments:{}});
-  assert.equal(invalid.isError,true);assert.equal(fs.existsSync(marker),false);
-  const allowed=await client.callTool({name:'probe_allowed',arguments:{value:'test'}});
-  assert.equal(allowed.isError,false);assert.equal(allowed.content[0].text,'hook-transformed');
-  assert.equal(fs.readFileSync(marker,'utf8'),'executed');
+  const extension = path.join(home, 'policy.ts'), marker = path.join(home, 'activated');
+  fs.writeFileSync(extension, `import fs from 'node:fs';\nexport default function(pi) {\n  fs.writeFileSync(${JSON.stringify(marker)}, 'loaded');\n  pi.registerTool({name:'plugin_only_probe',label:'probe',description:'fixture',parameters:{type:'object',properties:{}},execute:async()=>({content:[{type:'text',text:'plugin'}],details:{}})});\n}`);
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ packages: [ROOT], extensions: [extension] }));
+  const client = new Client({ name: 'sharing-scope-probe', version: '1' });
+  t.after(() => client.close());
+  await client.connect(new StdioClientTransport({ command: process.execPath, args: [path.join(ROOT, 'bin/bridge.mjs')], cwd: home,
+    stderr: 'pipe', env: { ...process.env, PI_SHARED_HOME: home, PI_SHARED_DATA_DIR: data, PI_SHARED_BRIDGE: '1' } }));
+  const list = await client.listTools();
+  assert.equal(list.tools.some(x => x.name === 'plugin_only_probe'), false);
+  assert.equal(fs.existsSync(marker), false, 'bridge must not activate unrelated Pi extensions');
+  const result = await client.callTool({ name: 'plugin_only_probe', arguments: {} });
+  assert.equal(result.isError, true);
 });
