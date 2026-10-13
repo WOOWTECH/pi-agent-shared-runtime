@@ -12,7 +12,7 @@ Pi agent / Pi Web 插件。缺少時才安裝官方 Claude Code、Codex CLI，�
 git:https://github.com/WOOWTECH/pi-agent-shared-runtime
 ```
 
-頁面顯示 Loaded 後，不必先聊天或手動執行初始化；插件會建立「Claude / Codex 環境初始化」對話。於 Pi Web 終端執行 `claude` 或 `codex`。
+頁面顯示 Loaded 後，插件會靜默安裝缺少的 CLI 並同步設定，不建立對話或送出 prompt。於 Pi Web 終端執行 `claude` 或 `codex`。
 
 若使用本機發布包，解開到持久化目錄，於該目錄執行：
 
@@ -25,7 +25,7 @@ node bin/cli.mjs boot --current --once
 
 GitHub source checkout 可直接執行 `bash install.sh` 完成上述安裝與目前服務初始化。
 
-Pi Web 插件管理介面也可以安裝上述本機 package 路徑。npm 安裝後會建立啟動 hook；Pi extension 的 session_start 是現有 Web process 的補充啟動方式。正式發布 npm 後可使用 `pi install npm:@woowtech/pi-agent-shared-runtime`；本版本尚未發布 npm。
+Pi Web 插件管理介面也可以安裝上述本機 package 路徑。安裝本機 checkout 前，先在套件根目錄執行 `npm install --omit=dev --legacy-peer-deps`，確認依賴存在後再用 GUI 安裝；npm 安裝會建立啟動 hook，Pi extension 的 session_start 是現有 Web process 的補充啟動方式。正式發布 npm 後可使用 `pi install npm:@woowtech/pi-agent-shared-runtime`；本版本尚未發布 npm。
 
 服務必須透過 PATH 呼叫 `pi-web`，並將 `$HOME/.local/bin` 放在系統 bin 之前。插件會建立此處的受管 launcher，保留實際原始 launcher。若服務固定呼叫 `/usr/local/bin/pi-web`，改用 `node /absolute/path/bin/cli.mjs launch-web`。插件不修改 root 的服務腳本，也不自行重啟服務。
 
