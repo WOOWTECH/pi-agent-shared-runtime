@@ -12,7 +12,7 @@ async function until(check, timeout = 12000) {
   while (Date.now() < end) { if (check()) return; await new Promise(r => setTimeout(r, 100)); }
   assert.fail('bootstrap condition timed out');
 }
-test('GUI resource activation initializes without a session and reactivation syncs without a duplicate conversation', async t => {
+test('GUI resource activation initializes silently and reactivation syncs without creating sessions', async t => {
   const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-gui-bootstrap-'));
   const data = path.join(home, 'agent'), state = path.join(data, 'shared-runtime'), bin = path.join(home, 'bin');
   fs.mkdirSync(data); fs.mkdirSync(bin);
@@ -45,7 +45,7 @@ test('GUI resource activation initializes without a session and reactivation syn
   await until(() => fs.existsSync(path.join(state, 'last-initialize.json')));
   await until(() => fs.existsSync(path.join(state, 'watch.lock/owner.json')));
   workers.add(JSON.parse(fs.readFileSync(path.join(state, 'watch.lock/owner.json'))).pid);
-  assert.equal(conversations, 1);
+  assert.equal(conversations, 0);
   assert.equal(JSON.parse(fs.readFileSync(path.join(state, 'last-initialize.json'))).status, 'ready');
   fs.writeFileSync(settings, '{"packages":[]}');
   const skillDir = path.join(data, 'skills/reactivation-probe'); fs.mkdirSync(skillDir, { recursive: true });
@@ -54,7 +54,7 @@ test('GUI resource activation initializes without a session and reactivation syn
   fs.writeFileSync(settings, JSON.stringify({ packages: [ROOT] }));
   await activate();
   await until(() => fs.existsSync(path.join(home, '.claude/skills/reactivation-probe/SKILL.md')));
-  assert.equal(conversations, 1);
+  assert.equal(conversations, 0);
   assert.equal(fs.readFileSync(path.join(home, '.claude/skills/reactivation-probe/SKILL.md'), 'utf8').includes('NEW_SOURCE'), true);
   // Child shutdown is asynchronous; leave fixture cleanup to OS temp management.
 });

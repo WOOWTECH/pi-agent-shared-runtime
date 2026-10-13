@@ -3,28 +3,37 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import http from 'node:http';
-import { ensureConversation } from '../src/host.mjs';
-import { digest, saveJSON } from '../src/common.mjs';
+import { boot } from '../src/host.mjs';
+import { ROOT } from '../src/common.mjs';
 
-test('repeated startup retains one initialization conversation', async t => {
-  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-boot-test-'));
-  t.after(() => fs.rmSync(state, { recursive: true, force: true }));
-  let creations = 0;
-  const server = http.createServer((req,res) => {
-    req.resume(); res.setHeader('Content-Type', 'application/json');
-    if (req.url === '/api/agent/new') { creations++; res.end(JSON.stringify({sessionId:'test-session'})); }
-    else res.end('{}');
-  });
-  await new Promise(r => server.listen(0, '127.0.0.1', r)); t.after(() => server.close());
-  const old = process.env.PORT; process.env.PORT = String(server.address().port); t.after(() => { if(old)process.env.PORT=old;else delete process.env.PORT; });
-  const loc = { state, home: state };
-  const a = await ensureConversation('boot-one',loc); const b = await ensureConversation('boot-one',loc);
-  assert.equal(a.sessionId,b.sessionId); assert.equal(creations,1);
-});
-test('unknown session creation outcome never blindly creates another conversation', async t => {
-  const state = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-boot-test-'));
-  t.after(() => fs.rmSync(state, { recursive: true, force: true }));
-  saveJSON(path.join(state,`boot-${digest('uncertain').slice(0,16)}.json`), { creation:'pending' });
-  await assert.rejects(ensureConversation('uncertain',{state,home:state}),/uncertain/);
+test('Pi Web startup initializes silently without creating or prompting a session', async t => {
+  const home = fs.mkdtempSync(path.join(os.tmpdir(), 'pi-boot-test-'));
+  t.after(() => fs.rmSync(home, { recursive: true, force: true }));
+  const data = path.join(home, 'agent'), bin = path.join(home, 'bin');
+  fs.mkdirSync(data); fs.mkdirSync(bin);
+  for (const name of ['pi-web', 'claude', 'codex']) {
+    const script = ['#!/bin/sh', 'case "$1" in', '--version) echo fixture-version ;;',
+      'auth|login) echo \'{"loggedIn":true}\' ;;', 'esac', ''].join('\n');
+    fs.writeFileSync(path.join(bin, name), script, { mode: 0o755 });
+  }
+  const old = Object.fromEntries(['HOME', 'PI_SHARED_HOME', 'PI_SHARED_DATA_DIR', 'PI_CODING_AGENT_DIR', 'PATH', 'PI_SHARED_BOOT_ID']
+    .map(key => [key, process.env[key]]));
+  Object.assign(process.env, { HOME: home, PI_SHARED_HOME: home, PI_SHARED_DATA_DIR: data,
+    PI_CODING_AGENT_DIR: data, PATH: bin + path.delimiter + process.env.PATH, PI_SHARED_BOOT_ID: 'quiet-startup-test' });
+  t.after(() => { for (const [key, value] of Object.entries(old)) value === undefined ? delete process.env[key] : process.env[key] = value; });
+  fs.writeFileSync(path.join(data, 'settings.json'), JSON.stringify({ packages: [ROOT] }));
+
+  let requests = 0;
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (...args) => { requests++; return originalFetch(...args); };
+  t.after(() => { globalThis.fetch = originalFetch; });
+  const loc = { home, data, state: path.join(data, 'shared-runtime') };
+  const first = await boot({ current: true, loc });
+  const second = await boot({ current: true, loc });
+  const initialized = JSON.parse(fs.readFileSync(path.join(data, 'shared-runtime', 'last-initialize.json'), 'utf8'));
+  assert.equal(first.status, 'ready', JSON.stringify(initialized));
+  assert.equal(second.status, 'ready');
+  assert.equal(requests, 0);
+  assert.equal(fs.existsSync(path.join(data, 'shared-runtime', 'last-boot.json')), true);
+  assert.equal(fs.readdirSync(loc.state).some(name => /^boot-.*\.json$/.test(name)), false);
 });

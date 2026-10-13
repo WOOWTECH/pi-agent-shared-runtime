@@ -1,9 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
-import { atomic, commandPath, locations, ROOT, readJSON, saveJSON, enabled, digest, locked, safeError } from './common.mjs';
-import { initialize, installProfiles } from './runtime.mjs';
-import { synchronize } from './sync.mjs';
+import { atomic, commandPath, locations, ROOT, readJSON, saveJSON, enabled, locked } from './common.mjs';
+import { initialize } from './runtime.mjs';
 
 export async function installHost({ auto = false, loc = locations() } = {}) {
   const shim = path.join(loc.home, '.local/bin/pi-web');
@@ -51,72 +50,16 @@ function webProcess() {
   }
   return null;
 }
-export async function api(route, body, { method = 'POST', cookie, port = process.env.PORT || process.env.PI_WEB_PORT || '30141' } = {}) {
-  if (!/^\d{1,5}$/.test(String(port))) throw new Error('Invalid local Pi Web port');
-  const response = await fetch(`http://127.0.0.1:${port}${route}`, { method, headers: { 'Content-Type': 'application/json', ...(cookie ? { Cookie: cookie } : {}) },
-    ...(body === undefined ? {} : { body: JSON.stringify(body) }), signal: AbortSignal.timeout(15000) });
-  if (!response.ok) throw new Error(`Pi Web API ${route} HTTP ${response.status}`);
-  return response;
-}
-async function cookieForWeb() {
-  if (!process.env.PI_WEB_PASSWORD) return undefined;
-  const response = await api('/api/web-auth', { password: process.env.PI_WEB_PASSWORD });
-  return response.headers.getSetCookie().map(c => c.split(';')[0]).join('; ');
-}
-export async function ensureConversation(bootKey, loc, cookie) {
-  const file = path.join(loc.state, `boot-${digest(bootKey).slice(0, 16)}.json`);
-  let record = readJSON(file);
-  if (record.sessionId) return { ...record, file };
-  // Store before sending so a crash/unknown creation never leads to blind duplication.
-  if (record.creation === 'pending') throw new Error('Previous initialization conversation creation is uncertain; inspect Pi Web sessions before retrying');
-  record = { bootKey, creation: 'pending', date: new Date().toISOString() }; saveJSON(file, record);
-  try {
-    const response = await api('/api/agent/new', { cwd: loc.home, type: 'ensure_session' }, { cookie });
-    const created = await response.json();
-    if (!created.sessionId) throw new Error('Pi Web did not return a session id');
-    record.sessionId = created.sessionId; record.creation = 'created'; saveJSON(file, record);
-  } catch (e) { record.error = safeError(e); saveJSON(file, record); throw e; }
-  try { await api(`/api/agent/${record.sessionId}`, { type: 'set_session_name', name: 'Claude / Codex 環境初始化' }, { cookie }); }
-  catch (e) { record.namingError = safeError(e); saveJSON(file, record); }
-  return { ...record, file };
-}
 export async function boot({ current = false, watch = false, loc = locations() } = {}) {
   if (!enabled(loc)) return { status: 'disabled' };
   const web = webProcess();
   const key = process.env.PI_SHARED_BOOT_ID || web?.key;
-  if (!key) return { status: 'no-web-process', reason: 'Startup fallback requires a running Pi Web; use launch-web at service start' };
+  if (!key && !current) return { status: 'no-web-process', reason: 'Run through launch-web or pass --current from an active Pi Web extension' };
   const ownerPid = web?.pid;
   const result = await locked(path.join(loc.state, 'boot.lock'), async () => {
-    let cookie;
-    for (let i = 0; i < 120; i++) {
-      try { cookie = await cookieForWeb(); await api('/api/sessions?summary=1', undefined, { method: 'GET', cookie }); break; }
-      catch (e) {
-        if (i === 119) throw e;
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      }
-    }
-    const convo = await ensureConversation(key, loc, cookie);
-    if (convo.initialized) {
-      const clis = readJSON(path.join(loc.state, 'clis.json'));
-      const missing = ['claude', 'codex'].some(name => !clis[name]?.binary || !fs.existsSync(clis[name].binary));
-      if (!missing) installProfiles(loc);
-      const refreshed = missing ? await initialize(loc)
-        : await locked(path.join(loc.state, 'initialize.lock'), () => synchronize({ cwd: loc.home, loc }));
-      if (refreshed.busy) return { status: 'busy' };
-      return { status: 'already-initialized', sessionId: convo.sessionId, repairedMissingClis: missing };
-    }
     const init = await initialize(loc);
     if (init.busy) return { status: 'busy' };
-    const prompt = '這是使用者已授權的 Claude Code / Codex 環境初始化對話。安裝及同步已由插件的確定性程式執行。' +
-      '請唯讀讀取 ' + path.join(loc.state, 'last-initialize.json') + '，以繁體中文回報版本、認證、技能同步、MCP/插件共享限制與失敗項目。' +
-      '不得重複安裝、修改設定、部署、操作設備或發送訊息。已有工具名稱不代表遠端呼叫成功。';
-    const record = readJSON(convo.file);
-    record.initialized = true; record.result = init.status; record.prompt = 'pending'; saveJSON(convo.file, record);
-    try {
-      await api(`/api/agent/${convo.sessionId}`, { type: 'prompt', message: prompt }, { cookie });
-      record.prompt = 'accepted'; saveJSON(convo.file, record);
-    } catch (e) { record.prompt = 'uncertain-or-rejected'; record.promptError = safeError(e); saveJSON(convo.file, record); }
-    return { status: init.status, sessionId: convo.sessionId, prompt: record.prompt };
+    return { status: init.status, initializedAt: new Date().toISOString(), bootKey: key };
   });
   if (!result.busy && result.status !== 'busy') saveJSON(path.join(loc.state, 'last-boot.json'), result);
   if (watch && !result.busy) {

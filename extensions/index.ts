@@ -31,8 +31,7 @@ export default function sharedRuntime(pi: ExtensionAPI) {
     }
   });
   pi.on('session_start', async (_event, ctx) => {
-    // Install a launch shim for the next service boot; also schedule one initialization
-    // for the current Web process when the package becomes active in a live session.
+    // Install a launch shim for the next service boot; initialize silently for the current process.
     await start();
     ctx.ui.setStatus('pi-shared-runtime', 'Claude/Codex sharing enabled');
   });

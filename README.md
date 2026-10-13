@@ -31,7 +31,7 @@ Pi Web 插件管理介面也可以安裝上述本機 package 路徑。npm 安裝
 
 ## 行為
 
-- 每次 Pi Web 服務啟動建立一次「Claude / Codex 環境初始化」對話；啟動程式先執行安裝與同步，再送出唯讀狀態回報 prompt。對話建立結果不確定時不盲目重建。
+- Pi Web 服務啟動時靜默執行安裝與同步，不建立 session、不送出 prompt。結果寫入 `$PI_CODING_AGENT_DIR/shared-runtime/last-initialize.json`；使用者可在 Pi 內執行 `/shared-runtime` 查看狀態。
 - CLI 已存在就保留版本；只有找不到 CLI 才以 npm 安裝官方套件。登入狀態不足時回報，使用者執行 `claude auth login` / `codex login`。
 - Pi settings/packages 是權威來源。原始技能目錄透過 symbolic link 共用，文件與附屬資源不複製；新增、更新、移除受管技能會同步。既有使用者檔案與同名連結不接管、不刪除；衝突列入報告。
 - 每 15 秒檢查來源 metadata；設定、技能、已載入插件來源變更會同步。執行 CLI 前也同步目前 project。這不是定時模型對話。
@@ -51,9 +51,9 @@ node bin/cli.mjs status
 npm test
 ```
 
-全域狀態位於 `$PI_CODING_AGENT_DIR/shared-runtime/`，未設定時為 `~/.pi/agent/shared-runtime/`：`last-initialize.json`、`last-sync.json`、`last-boot.json`、每個 project 的 ownership 與每次 boot 的 conversation id。可用 `PI_SHARED_HOME`、`PI_SHARED_DATA_DIR`、`PI_SHARED_SDK_ROOT` 覆寫測試位置；Web port 使用 `PORT` / `PI_WEB_PORT`。有設定 `PI_WEB_PASSWORD` 時使用原有登入 API。
+全域狀態位於 `$PI_CODING_AGENT_DIR/shared-runtime/`，未設定時為 `~/.pi/agent/shared-runtime/`：`last-initialize.json`、`last-sync.json`、`last-boot.json`、每個 project 的 ownership 與每次 boot 的識別碼。可用 `PI_SHARED_HOME`、`PI_SHARED_DATA_DIR`、`PI_SHARED_SDK_ROOT` 覆寫測試位置；Web port 使用 `PORT` / `PI_WEB_PORT`。
 
-初始化對話需要 Pi 已設定可用模型；CLI 的 TUI 開啟不代表模型帳號或所有遠端工具可用。使用 bridge 的 `pi_shared_status` / `pi_shared_search` 取得當前工具與能力列表。
+自動初始化不需要 Pi 模型或模型帳號；CLI 的 TUI 開啟不代表 CLI 已登入或所有遠端工具可用。使用 `/shared-runtime` 或 bridge 的 `pi_shared_status` / `pi_shared_search` 取得目前工具與能力列表。
 
 技能名稱均由目前來源決定；grill-me、brainstorming 只是同步示例，本插件不下載任何示例技能。
 
