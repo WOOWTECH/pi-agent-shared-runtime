@@ -42,6 +42,17 @@ test('rediscovered generated symlink remains canonical and never links to itself
   assert.equal(fs.realpathSync(discovered.filePath), a.filePath);
   assert.equal(second.managed[0].source, path.dirname(a.filePath));
 });
+test('Pi-owned skill source is not reported as a destination conflict', t => {
+  const dir = fixture(t), a = skill(dir, 'alpha');
+  const piSource = path.dirname(path.dirname(a.filePath));
+  const claude = path.join(dir, '.claude/skills');
+  const codex = path.join(dir, '.codex/skills');
+  const result = syncLinks([a], [piSource, claude, codex]);
+  assert.equal(result.conflicts.length, 0);
+  assert.equal(result.managed.length, 2);
+  assert.equal(fs.lstatSync(path.join(claude, 'alpha')).isSymbolicLink(), true);
+  assert.equal(fs.lstatSync(path.join(codex, 'alpha')).isSymbolicLink(), true);
+});
 test('MCP ownership digest survives TOML key reordering', t => {
   const file = path.join(fixture(t), 'config.toml');
   const entry = { command: 'node', args: ['bridge'], env: { Z: 'z', A: 'a' }, startup_timeout_sec: 90 };
