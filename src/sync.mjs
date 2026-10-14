@@ -12,6 +12,10 @@ export function syncLinks(skills, destinations, previous = []) {
       if (!/^[a-zA-Z0-9_-]+$/.test(skill.name)) { conflicts.push({ name: skill.name, reason: 'invalid skill name' }); continue; }
       const source = fs.realpathSync(path.dirname(skill.filePath));
       const target = path.join(dest, skill.name);
+      // Pi exposes its own global skills from ~/.agents/skills. That directory
+      // is authoritative, so when it appears among destinations there is no
+      // link to create or conflict to report.
+      if (path.resolve(target) === source) continue;
       const old = previous.find(p => p.target === target);
       try {
         const st = fs.lstatSync(target);
