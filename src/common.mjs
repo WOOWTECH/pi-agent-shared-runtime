@@ -31,14 +31,44 @@ export function digest(value) {
   }
   return crypto.createHash('sha256').update(typeof value === 'string' ? value : JSON.stringify(canonical(value))).digest('hex');
 }
+export function isSharedPackage(source, loc = locations()) {
+  if (typeof source !== 'string') return false;
+  if (source === 'npm:' + NAME || source.startsWith('npm:' + NAME + '@')) return true;
+  if (/^git:https:\/\/github\.com\/WOOWTECH\/pi-agent-shared-runtime(?:\.git)?(?:[#@].*)?$/.test(source)) return true;
+  const target = path.resolve(loc.data, source);
+  if (target === ROOT) return true;
+  try { return readJSON(path.join(target, 'package.json')).name === NAME; } catch { return false; }
+}
 export function enabled(loc = locations()) {
-  const settings = readJSON(path.join(loc.data, 'settings.json'));
-  return (settings.packages || []).some(p => {
+  return (readJSON(path.join(loc.data, 'settings.json')).packages || []).some(p => {
     const source = typeof p === 'string' ? p : p.source;
-    if (!source) return false;
-    const matches = source.includes(NAME) || /^git:https:\/\/github\.com\/WOOWTECH\/pi-agent-shared-runtime(?:\.git)?(?:[#@].*)?$/.test(source) || path.resolve(loc.data, source) === ROOT;
-    return matches && !(typeof p === 'object' && Array.isArray(p.extensions) && !p.extensions.length);
+    return isSharedPackage(source, loc) && !(typeof p === 'object' && Array.isArray(p.extensions) && !p.extensions.length);
   });
+}
+/** Explicit migration only. Normal install/boot never changes a user's disabled selection. */
+export function enableSharedPackage(loc = locations()) {
+  const file = path.join(loc.data, 'settings.json');
+  const original = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  const settings = original === null ? {} : JSON.parse(original);
+  const packages = settings.packages || [];
+  let matched = false;
+  const previousSources = [];
+  settings.packages = packages.map(p => {
+    if (!isSharedPackage(typeof p === 'string' ? p : p.source, loc)) return p;
+    matched = true;
+    previousSources.push(typeof p === 'string' ? p : p.source);
+    if (typeof p === 'string') return ROOT;
+    const next = { ...p, source: ROOT };
+    for (const key of ['extensions', 'skills']) if (Array.isArray(next[key]) && next[key].length === 0) delete next[key];
+    return next;
+  });
+  if (!matched) settings.packages.push(ROOT);
+  const backup = original === null ? null : path.join(loc.state, 'enable-backups', `settings-${Date.now()}-${crypto.randomUUID()}.json`);
+  if (backup) atomic(backup, original);
+  const current = fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null;
+  if (current !== original) throw new Error('Settings changed during enable; retry from the current settings');
+  saveJSON(file, settings);
+  return { enabled: enabled(loc), restartSessions: true, source: ROOT, previousSources, backup };
 }
 export function commandPath(name, env = process.env, exclude = []) {
   for (const dir of (env.PATH || '').split(path.delimiter)) {
@@ -63,30 +93,68 @@ function processIdentity(pid) {
       pidNamespace: fs.readlinkSync(`/proc/${pid}/ns/pid`) };
   } catch { return {}; }
 }
+/**
+ * OS-backed arbitration. Never unlink the SQLite file: that would create a
+ * second lock inode while another process still holds the first. SQLite releases
+ * its file locks on process death, including SIGKILL; no recovery mutex is needed.
+ * The directory record supports migration diagnostics, not mutual exclusion.
+ * Drain old (pre-SQLite) callers before upgrading; mixed versions are not safe.
+ */
 export async function locked(file, action) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
-  try { fs.mkdirSync(file); }
-  catch (e) {
-    if (e.code !== 'EEXIST') throw e;
-    const owner = readJSON(path.join(file, 'owner.json'));
-    try {
-      if (!owner.pid) throw new Error('missing owner');
-      process.kill(owner.pid, 0);
-      const current = processIdentity(owner.pid);
-      if ((owner.startTime && current.startTime && owner.startTime !== current.startTime) ||
-          (owner.pidNamespace && current.pidNamespace && owner.pidNamespace !== current.pidNamespace)) {
-        throw new Error('lock process was replaced');
+  const databaseFile = file + '.sqlite';
+  let fd;
+  try {
+    // Never open/close an existing database outside SQLite: POSIX close() of
+    // ANY fd for that inode can release this process's other SQLite connection.
+    fd = fs.openSync(databaseFile, fs.constants.O_CREAT | fs.constants.O_EXCL | fs.constants.O_RDWR, 0o600);
+  } catch (error) { if (error.code !== 'EEXIST') throw error; }
+  finally { if (fd !== undefined) fs.closeSync(fd); }
+  const stat = fs.lstatSync(databaseFile);
+  if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1) throw new Error('Unsafe lock database');
+  const { DatabaseSync } = await import('node:sqlite');
+  const database = new DatabaseSync(databaseFile, { timeout: 0 });
+  let acquired = false, token;
+  try {
+    try { database.exec('BEGIN EXCLUSIVE'); acquired = true; }
+    catch (error) {
+      // SQLITE_BUSY and SQLITE_LOCKED. Callers choose whether/how long to retry.
+      if (error.errcode === 5 || error.errcode === 6) return { busy: true };
+      throw error;
+    }
+    if (fs.existsSync(file)) {
+      if (fs.lstatSync(file).isSymbolicLink()) throw new Error('Unsafe lock directory');
+      const owner = readJSON(path.join(file, 'owner.json'));
+      if (owner.protocol !== 'sqlite-v1') {
+        // Conservative compatibility check for a pre-upgrade directory owner.
+        // macOS has no /proc identity, so a reused live PID remains busy.
+        try {
+          if (!owner.pid) throw new Error('missing owner');
+          process.kill(owner.pid, 0);
+          const current = processIdentity(owner.pid);
+          if ((owner.startTime && current.startTime && owner.startTime !== current.startTime) ||
+              (owner.pidNamespace && current.pidNamespace && owner.pidNamespace !== current.pidNamespace)) throw new Error('lock process was replaced');
+          return { busy: true };
+        } catch (error) {
+          if (error.code === 'EPERM') return { busy: true };
+          if (!owner.pid && Date.now() - fs.statSync(file).mtimeMs < 30000) return { busy: true };
+        }
       }
-    }
-    catch (e) {
-      if (e.code === 'EPERM') return { busy: true };
-      // Allow a just-created lock time to acquire an owner record.
-      if (!owner.pid && Date.now() - fs.statSync(file).mtimeMs < 30000) return { busy: true };
+      // Only the exclusive transaction owner may recover this directory. New
+      // callers cannot observe a stale owner and then remove a replacement lock.
       fs.rmSync(file, { recursive: true, force: true });
-      return locked(file, action);
     }
-    return { busy: true };
+    try { fs.mkdirSync(file, { mode: 0o700 }); }
+    catch (error) { if (error.code === 'EEXIST') return { busy: true }; throw error; }
+    token = crypto.randomUUID();
+    saveJSON(path.join(file, 'owner.json'), { protocol: 'sqlite-v1', token, pid: process.pid, ...processIdentity(process.pid) });
+    return await action();
+  } finally {
+    try {
+      if (token && readJSON(path.join(file, 'owner.json')).token === token) fs.rmSync(file, { recursive: true, force: true });
+    } finally {
+      try { if (acquired) database.exec('ROLLBACK'); }
+      finally { database.close(); }
+    }
   }
-  saveJSON(path.join(file, 'owner.json'), { pid: process.pid, ...processIdentity(process.pid) });
-  try { return await action(); } finally { fs.rmSync(file, { recursive: true, force: true }); }
 }
