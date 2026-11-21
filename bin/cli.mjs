@@ -3,16 +3,18 @@ import { health } from '../src/health.mjs';
 import path from 'node:path';
 import fs from 'node:fs';
 import { spawn } from 'node:child_process';
-import { locations, readJSON, ROOT, enabled, safeError, commandPath, locked } from '../src/common.mjs';
+import { locations, readJSON, ROOT, enabled, enableSharedPackage, safeError, commandPath, locked } from '../src/common.mjs';
 import { installHost, launchWeb, boot } from '../src/host.mjs';
 import { initialize, latest } from '../src/runtime.mjs';
 import { synchronize } from '../src/sync.mjs';
 
 const [action = 'status', ...args] = process.argv.slice(2), loc = locations();
 // Resource scans in the worker must not start another bootstrap worker.
+const callerInternal = process.env.PI_SHARED_INTERNAL;
 process.env.PI_SHARED_INTERNAL = '1';
 try {
-  if (action === 'health') { const result = health(loc); console.log(JSON.stringify(result)); if (!result.healthy) process.exitCode = 1; }
+  if (action === 'enable') console.log(JSON.stringify(enableSharedPackage(loc)));
+  else if (action === 'health') { const result = health(loc); console.log(JSON.stringify(result)); if (!result.healthy) process.exitCode = 1; }
   else if (action === 'launch-web') await launchWeb(args, loc);
   else if (action === 'install-host') {
     console.log(JSON.stringify(await installHost({ auto: args.includes('--auto'), loc })));
@@ -44,9 +46,12 @@ try {
     const cli = readJSON(path.join(loc.state, 'clis.json'))[name];
     const binary = cli?.binary || commandPath(name, process.env, [path.join(loc.home, '.local/pi-shared/bin')]);
     if (!binary) throw new Error('CLI missing; run initialize');
-    const child = spawn(binary, cliArgs, { stdio: 'inherit' });
+    const env = { ...process.env };
+    if (callerInternal === undefined) delete env.PI_SHARED_INTERNAL;
+    else env.PI_SHARED_INTERNAL = callerInternal;
+    const child = spawn(binary, cliArgs, { stdio: 'inherit', env });
     child.once('error', e => { console.error(safeError(e)); process.exitCode = 1; });
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
     child.once('exit', c => process.exit(c ?? 1));
-  } else throw new Error('Use install-host, launch-web, boot, initialize, sync, status, health, or run-cli');
+  } else throw new Error('Use enable, install-host, launch-web, boot, initialize, sync, status, health, or run-cli');
 } catch (e) { console.error('[pi-shared-runtime]', JSON.stringify(safeError(e))); process.exitCode = 1; }

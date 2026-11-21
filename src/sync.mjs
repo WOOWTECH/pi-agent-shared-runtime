@@ -65,7 +65,23 @@ export function mergeCodex(file, entry, previousHash) {
   atomic(file, kept.trimEnd() + '\n\n' + toml({ mcp_servers: { pi_shared_runtime: entry } }));
   return { hash: digest(entry) };
 }
+export function mergeMemoryServer(loc = locations()) {
+  const file = path.join(loc.data, 'mcp.json');
+  const state = path.join(loc.state, 'memory-server.json');
+  const data = readJSON(file);
+  if (data.mcpServers !== undefined && (!data.mcpServers || Array.isArray(data.mcpServers) || typeof data.mcpServers !== 'object')) throw new Error('Invalid global MCP servers');
+  data.mcpServers ||= {};
+  const entry = { command: process.execPath, args: [path.join(ROOT, 'bin/memory.mjs')], env: { PI_SHARED_HOME: loc.home, PI_SHARED_DATA_DIR: loc.data } };
+  const old = readJSON(state), existing = data.mcpServers.pi_shared_memory;
+  if (existing && digest(existing) !== old.hash && digest(existing) !== digest(entry)) return { conflict: 'Global MCP pi_shared_memory already owned by user' };
+  data.mcpServers.pi_shared_memory = entry;
+  saveJSON(file, data);
+  const result = { hash: digest(entry) };
+  saveJSON(state, result);
+  return result;
+}
 export async function synchronize({ cwd = process.cwd(), loc = locations(), resourceProvider = loadResources } = {}) {
+  const memory = mergeMemoryServer(loc);
   const { loader } = await resourceProvider(cwd, loc);
   const found = loader.getSkills();
   const key = digest(cwd).slice(0, 16);
@@ -83,11 +99,11 @@ export async function synchronize({ cwd = process.cwd(), loc = locations(), reso
   const claude = mergeClaude(path.join(loc.home, '.claude.json'), claudeEntry, old.claudeHash);
   const codex = mergeCodex(path.join(loc.home, '.codex/config.toml'), codexEntry, old.codexHash);
   const report = { date: new Date().toISOString(), cwd, skills: skills.map(s => ({ name: s.name, source: s.filePath })),
-    links: links.managed, removed: links.removed, conflicts: [...links.conflicts, ...[claude, codex].filter(x => x.conflict)],
-    claudeHash: claude.hash, codexHash: codex.hash,
+    links: links.managed, removed: links.removed, conflicts: [...links.conflicts, ...[claude, codex, memory].filter(x => x.conflict)],
+    claudeHash: claude.hash, codexHash: codex.hash, memoryHash: memory.hash,
     skillDiagnostics: found.diagnostics.map(d => ({ type: d.type, message: d.message?.replace(/https?:\/\/\S+/g, '[endpoint]') })),
     mcpNames: Object.keys(readJSON(path.join(loc.data, 'mcp.json')).mcpServers || {}),
-    bridge: 'Shares Pi skills and configured global MCP only. Native Pi plugins/extensions are not loaded by the bridge.' };
+    bridge: 'Shares Pi skills, configured global MCP and host-local shared memory. Native provider histories remain separate.' };
   saveJSON(file, report); saveJSON(path.join(loc.state, 'last-sync.json'), report);
   return report;
 }

@@ -1,6 +1,6 @@
 # Pi Agent Shared Runtime
 
-Pi agent / Pi Web 插件。缺少時才安裝官方 Claude Code、Codex CLI，讓 Pi Web 的登入 shell 可以執行 `claude` / `codex`，並共享 Pi skills 與已設定的全域 MCP。
+Pi agent / Pi Web 插件。缺少時才安裝官方 Claude Code、Codex CLI，讓 Pi Web 的登入 shell 可以執行 `claude` / `codex`，並共享 Pi skills、已設定的全域 MCP 與這台主機的共用記憶。
 
 ## 安裝
 
@@ -37,6 +37,7 @@ Pi Web 插件管理介面也可以安裝上述本機 package 路徑。安裝本�
 - 每 15 秒檢查 Pi 設定、全域 MCP 與技能來源；執行 CLI 前也同步目前 project。這不是定時模型對話。
 - Claude `~/.claude.json` 與 Codex `~/.codex/config.toml` 加入 `pi_shared_runtime` stdio MCP。其他設定保留，使用者修改同名 MCP 時保留並回報。
 - MCP bridge 只載入 Pi Web 全域設定的 MCP（`/data/pi-agent/mcp.json`），並只暴露這些 MCP 工具。Pi 原生 plugins/extensions 不載入、不轉換；MCP adapter 維持自己的 OAuth、憑證及工具規則，bridge 不複製憑證。
+- 資源掃描（sync、initialize、boot、watcher、CLI 啟動前同步）不 import 或執行使用者 extensions；技能仍由完整 SDK package／project 設定解析。MCP runtime 明確載入自己的 adapter，無須修改呼叫者的 bridge 環境旗標。正常 Pi provider 照常載入 extensions，`run-cli` 子程序保留呼叫者原本的 internal 旗標。
 - 技能以 Pi settings/packages 為來源；Pi Web 全域 MCP 以 `mcp.json` 為共同來源。Pi 專用 UI、快捷鍵、provider 與對話編排不在共用範圍；遠端 MCP 仍可能有認證、DNS、服務故障。報告區分設定載入與實際呼叫成功。
 - 停用／移除本 package 後自動安裝與同步暫停；idle controller 保留以偵測 GUI 重新啟用，Web 服務結束才退出，受管 launcher 仍可委派真正 Pi Web；保留 CLI、登入及既有共享項目。要清理可檢視 state 中的 owned links，勿刪除使用者自行建立的項目。
 
@@ -62,3 +63,75 @@ npm test
 Pi 5 完整 GUI 流程與修復紀錄：[PI5-E2E.md](PI5-E2E.md)。
 
 商業部署的版本固定、health、回退與驗收邊界：[COMMERCIAL-READINESS.md](docs/COMMERCIAL-READINESS.md)。
+
+## 同主機共用記憶（0.1.5）
+
+`pi_shared_memory` 是受管的本機 stdio MCP，資料存於 Pi data 的 `shared-runtime/memory`。Pi、Claude Code、Codex，以及 Paseo／Woowtech Smart／Apporo Smart 連到同一主機時，都使用同一來源。不同主機的 data 目錄彼此獨立；此功能不合併 provider 原生對話紀錄或自動記憶資料庫。
+
+共同的 `shared-host-memory` skill 由 Pi package 載入，並同步連結給 Claude／Codex。MCP 提供 `read`、`list`、`write`、`delete`；首次寫入要求 `expectedRevision: null`，更新與刪除要求目前 revision。並行變更回報 `MEMORY_CONFLICT`，不覆蓋其他對話的新內容。單筆內容上限 16 KiB，列舉超過 200 筆時要求縮小 prefix。
+
+同步會保留其他 MCP 和使用者擁有的 skill。若全域 MCP 已有使用者自訂的 `pi_shared_memory`，保留原設定並回報衝突；不要把該狀態視為共用記憶已啟用。
+
+## 明確啟用既有停用設定
+
+安裝或開機不會自動清除使用者的停用選擇。當已確認要啟用目前主機的共享功能時，使用同一組 `PI_SHARED_HOME`／`PI_SHARED_DATA_DIR` 執行：
+
+```sh
+pi-shared-runtime enable
+pi-shared-runtime sync --global
+```
+
+`enable` 先將原始 settings 備份到 `shared-runtime/enable-backups`，再將本套件的舊來源路徑改為目前執行的套件路徑，並移除空的 extensions／skills 選擇。其他 package、MCP、skill 和選項保留。此步不安裝或更新 provider CLI；新對話會載入新 MCP／skill。現有對話需明確重新載入或重建，才能驗證新資源。
+
+開發驗證使用 `npm ci --ignore-scripts --legacy-peer-deps`，由宿主供應 Pi SDK peer；不要讓 npm 自動選擇未鎖定的最新 Pi SDK。
+
+### Skill source authority
+
+Generated Claude/Codex/agents skill links are outputs, never replacement package
+sources. Before the Pi SDK deduplicates skill paths by realpath, the runtime
+excludes only links that still match its ownership receipt. Package selection,
+project precedence and enable/disable filters remain the SDK's responsibility.
+User-replaced links remain user-owned. This uses a guarded per-instance SDK
+resolution boundary; an incompatible SDK fails explicitly instead of silently
+dropping enabled skills or reviving removed packages. Run
+`node --test tests/resource-authority.test.mjs tests/resource-boundary.test.mjs`
+against each distribution's exact SDK when upgrading it.
+
+### Memory lock upgrade and platform boundary
+
+Shared memory uses Node's built-in `node:sqlite` (`DatabaseSync`, available at the
+existing Node >=22.19 minimum) only for OS-backed exclusive lock arbitration.
+Memory content stays in the private JSON files; the SQLite lock database stores
+no facts or credentials. Contention returns immediately; memory writes retry for
+at most five seconds. Process exit or SIGKILL releases the OS lock automatically.
+Never remove `*.lock.sqlite` or `.lock.sqlite` files while a runtime may be using
+them: replacing the lock inode would bypass another process's lock.
+
+Before migrating from the earlier directory-only lock implementation, drain all
+provider turns and stop the old shared bridge/watch processes. The PaaS rollout
+uses `Recreate` to stop the old container and its runtimes before the new image
+starts, then runs the explicit package enable migration. Existing package
+selections and settings backups remain preserved. This release does not claim
+mutual exclusion between concurrently running old and new implementations.
+
+Use one local filesystem data volume per host. Linux, Ubuntu, k3s, HA add-on and
+Windows WSL2 use the Linux runtime; keep WSL2 data in the distro filesystem.
+macOS uses SQLite's native OS locking without `/proc` for new locks. A surviving
+legacy directory owner whose PID is live is conservatively treated as busy.
+Native Windows and shared network filesystems have not been accepted by these
+tests. Linux tests cover concurrent stale recovery, SIGKILL recovery, active-owner
+preservation, same-process/cross-process exclusion, and revision CAS conflicts;
+they do not replace real macOS, WSL2 or HA deployment acceptance.
+
+### Headless MCP bridge restart
+
+The bridge initializes the SDK theme before binding its MCP extension, without
+starting a terminal UI or a theme watcher. This supports the adapter's cached
+startup path after a previous bridge process has discovered global MCP tools.
+`pi_shared_status.runtimeErrors` preserves the extension event and its underlying
+error message when initialization fails.
+
+Run `node --test tests/mcp-adapter.test.mjs` against each distribution's exact
+SDK. The test starts a real bridge, calls a stdio MCP tool, retains its metadata,
+then starts a second process and calls the tool again. Both startups must have
+zero runtime errors; a discovered tool name alone is insufficient.

@@ -35,7 +35,7 @@ test('GUI resource activation initializes silently and reactivation syncs withou
     PORT: String(server.address().port), PATH: bin + ':' + process.env.PATH };
   delete env.PI_SHARED_INTERNAL; delete env.PI_SHARED_BRIDGE;
   const activate = () => new Promise((resolve, reject) => {
-    const code = `import {loadResources} from ${JSON.stringify(path.join(ROOT, 'src/pi.mjs'))}; await loadResources(${JSON.stringify(home)});`;
+    const code = `import {sdk} from ${JSON.stringify(path.join(ROOT, 'src/pi.mjs'))}; const pi=await sdk(); const loader=new pi.DefaultResourceLoader({cwd:${JSON.stringify(home)},agentDir:${JSON.stringify(data)}}); await loader.reload();`;
     const child = spawn(process.execPath, ['--input-type=module', '-e', code], { env, stdio: 'ignore' });
     child.on('error', reject); child.on('exit', c => c === 0 ? resolve() : reject(new Error('activation failed')));
   });
