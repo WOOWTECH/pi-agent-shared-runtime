@@ -84,6 +84,18 @@ pi-shared-runtime sync --global
 
 開發驗證使用 `npm ci --ignore-scripts --legacy-peer-deps`，由宿主供應 Pi SDK peer；不要讓 npm 自動選擇未鎖定的最新 Pi SDK。
 
+### Skill source authority
+
+Generated Claude/Codex/agents skill links are outputs, never replacement package
+sources. Before the Pi SDK deduplicates skill paths by realpath, the runtime
+excludes only links that still match its ownership receipt. Package selection,
+project precedence and enable/disable filters remain the SDK's responsibility.
+User-replaced links remain user-owned. This uses a guarded per-instance SDK
+resolution boundary; an incompatible SDK fails explicitly instead of silently
+dropping enabled skills or reviving removed packages. Run
+`node --test tests/resource-authority.test.mjs tests/resource-boundary.test.mjs`
+against each distribution's exact SDK when upgrading it.
+
 ### Memory lock upgrade and platform boundary
 
 Shared memory uses Node's built-in `node:sqlite` (`DatabaseSync`, available at the

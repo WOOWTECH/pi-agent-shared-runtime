@@ -25,11 +25,19 @@ export async function loadResources(cwd = process.cwd(), loc = locations()) {
   const owned = new Set();
   try {
     for (const name of fs.readdirSync(loc.state).filter(n => /^sync-.*\.json$/.test(n))) {
-      for (const link of readJSON(path.join(loc.state, name)).links || []) owned.add(path.join(link.target, 'SKILL.md'));
+      for (const link of readJSON(path.join(loc.state, name)).links || []) {
+        if (typeof link.target !== 'string' || typeof link.source !== 'string') continue;
+        try {
+          if (fs.lstatSync(link.target).isSymbolicLink() && path.resolve(path.dirname(link.target), fs.readlinkSync(link.target)) === path.resolve(link.source)) {
+            owned.add(path.resolve(link.target, 'SKILL.md'));
+          }
+        } catch (error) { if (error.code !== 'ENOENT') throw error; }
+      }
     }
   } catch (e) { if (e.code !== 'ENOENT') throw e; }
-  const resources = await new pi.DefaultPackageManager({ cwd, agentDir: loc.data, settingsManager }).resolve();
-  const paths = resources.skills.filter(r => r.enabled && !owned.has(r.path)).map(r => r.path);
+  const manager = new pi.DefaultPackageManager({ cwd, agentDir: loc.data, settingsManager });
+  const resources = await resolveSkillSources(manager, owned);
+  const paths = resources.skills.filter(r => r.enabled).map(r => r.path);
   const authoritative = pi.loadSkills({ cwd, agentDir: loc.data, skillPaths: paths, includeDefaults: false });
   const loader = new pi.DefaultResourceLoader({ cwd, agentDir: loc.data, settingsManager,
     additionalExtensionPaths: process.env.PI_SHARED_BRIDGE === '1' ? [path.join(ROOT, 'extensions/global-mcp.ts')] : [],
@@ -40,6 +48,43 @@ export async function loadResources(cwd = process.cwd(), loc = locations()) {
     skillsOverride: () => authoritative });
   await loader.reload();
   return { pi, loader, settingsManager };
+}
+
+/**
+ * Pi's resolver ranks auto-discovered .agents aliases before package resources,
+ * then deduplicates by realpath. Filtering its final result loses the enabled
+ * package source and makes synchronization oscillate. Remove only our current
+ * aliases before that boundary; the SDK still applies package filters, project
+ * precedence, disabling and deduplication. Never follow a receipt as authority.
+ *
+ * This is a guarded, per-instance SDK compatibility seam, not a prototype patch.
+ * Its real-SDK regression is required on each supported distribution. An SDK
+ * that changes or skips this boundary fails closed instead of losing skills or
+ * resurrecting a removed package through a generated link.
+ */
+export async function resolveSkillSources(manager, owned) {
+  if (!owned.size) return manager.resolve();
+  const original = manager.toResolvedPaths;
+  const ownMethod = Object.hasOwn(manager, 'toResolvedPaths');
+  if (typeof original !== 'function') throw new Error('Unsupported Pi SDK skill resolution boundary');
+  let observed = false;
+  manager.toResolvedPaths = function (accumulator) {
+    if (!(accumulator?.skills instanceof Map)) throw new Error('Unsupported Pi SDK skill accumulator');
+    observed = true;
+    for (const resourcePath of accumulator.skills.keys()) {
+      if (typeof resourcePath !== 'string') throw new Error('Unsupported Pi SDK skill path');
+      if (owned.has(path.resolve(resourcePath))) accumulator.skills.delete(resourcePath);
+    }
+    return original.call(this, accumulator);
+  };
+  try {
+    const resources = await manager.resolve();
+    if (!observed) throw new Error('Unsupported Pi SDK skill resolution flow');
+    return resources;
+  } finally {
+    if (ownMethod) manager.toResolvedPaths = original;
+    else delete manager.toResolvedPaths;
+  }
 }
 export async function createRuntime(cwd = process.cwd(), loc = locations()) {
   process.env.PI_SHARED_BRIDGE = '1';
