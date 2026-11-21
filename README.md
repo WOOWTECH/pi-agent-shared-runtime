@@ -122,3 +122,16 @@ Native Windows and shared network filesystems have not been accepted by these
 tests. Linux tests cover concurrent stale recovery, SIGKILL recovery, active-owner
 preservation, same-process/cross-process exclusion, and revision CAS conflicts;
 they do not replace real macOS, WSL2 or HA deployment acceptance.
+
+### Headless MCP bridge restart
+
+The bridge initializes the SDK theme before binding its MCP extension, without
+starting a terminal UI or a theme watcher. This supports the adapter's cached
+startup path after a previous bridge process has discovered global MCP tools.
+`pi_shared_status.runtimeErrors` preserves the extension event and its underlying
+error message when initialization fails.
+
+Run `node --test tests/mcp-adapter.test.mjs` against each distribution's exact
+SDK. The test starts a real bridge, calls a stdio MCP tool, retains its metadata,
+then starts a second process and calls the tool again. Both startups must have
+zero runtime errors; a discovered tool name alone is insufficient.

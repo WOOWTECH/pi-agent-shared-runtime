@@ -1,6 +1,6 @@
 {
   "name": "@woowtech/pi-agent-shared-runtime",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "description": "Share host-local memory, Pi skills and configured global MCP across Pi, Claude Code and Codex.",
   "type": "module",
   "license": "MIT",

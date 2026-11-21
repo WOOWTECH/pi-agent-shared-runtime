@@ -89,10 +89,14 @@ export async function resolveSkillSources(manager, owned) {
 }
 export async function createRuntime(cwd = process.cwd(), loc = locations()) {
   const { pi, loader, settingsManager } = await loadResources(cwd, loc, { bridge: true });
+  // The SDK's headless UI still exposes its shared theme proxy. MCP cached
+  // startup formats a status even in print mode; initialize that public SDK
+  // dependency before session_start, with no filesystem watcher or UI loop.
+  pi.initTheme(settingsManager.getTheme(), false);
   const errors = [];
   const { session, extensionsResult } = await pi.createAgentSession({ cwd, agentDir: loc.data, settingsManager,
     resourceLoader: loader, sessionManager: pi.SessionManager.inMemory(cwd) });
-  await session.bindExtensions({ mode: 'print', onError: e => errors.push(safeError(e)) });
+  await session.bindExtensions({ mode: 'print', onError: e => errors.push({ ...safeError(e?.error ?? e), event: e?.event, extensionPath: e?.extensionPath }) });
   return { session, loader, extensionsResult, errors };
 }
 export function sourceStamp(loc = locations(), cwd = process.cwd()) {
