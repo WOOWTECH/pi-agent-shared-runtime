@@ -18,7 +18,7 @@ export async function sdk() {
   }
   throw new Error('Pi SDK unavailable; install this package in the Pi host with its peer dependencies.');
 }
-export async function loadResources(cwd = process.cwd(), loc = locations()) {
+export async function loadResources(cwd = process.cwd(), loc = locations(), { bridge = false } = {}) {
   const pi = await sdk();
   const settingsManager = pi.SettingsManager.create(cwd, loc.data);
   // Generated links must never become authoritative sources after a package is removed.
@@ -40,11 +40,12 @@ export async function loadResources(cwd = process.cwd(), loc = locations()) {
   const paths = resources.skills.filter(r => r.enabled).map(r => r.path);
   const authoritative = pi.loadSkills({ cwd, agentDir: loc.data, skillPaths: paths, includeDefaults: false });
   const loader = new pi.DefaultResourceLoader({ cwd, agentDir: loc.data, settingsManager,
-    additionalExtensionPaths: process.env.PI_SHARED_BRIDGE === '1' ? [path.join(ROOT, 'extensions/global-mcp.ts')] : [],
-    // Skills are resolved from the user's full Pi package settings above, but
-    // this sharing runtime must not activate unrelated Pi plugin extensions.
-    // In bridge mode, only the explicitly added global MCP adapter is loaded.
-    noExtensions: process.env.PI_SHARED_BRIDGE === '1',
+    // Resource discovery must not import user extension modules, even during
+    // boot, watcher refresh or CLI launch. Preserve the full SDK skill resolver
+    // above; only the explicit MCP runtime may load our own adapter. Do not
+    // change process.env: normal provider children still need their extensions.
+    additionalExtensionPaths: bridge ? [path.join(ROOT, 'extensions/global-mcp.ts')] : [],
+    noExtensions: true,
     skillsOverride: () => authoritative });
   await loader.reload();
   return { pi, loader, settingsManager };
@@ -87,8 +88,7 @@ export async function resolveSkillSources(manager, owned) {
   }
 }
 export async function createRuntime(cwd = process.cwd(), loc = locations()) {
-  process.env.PI_SHARED_BRIDGE = '1';
-  const { pi, loader, settingsManager } = await loadResources(cwd, loc);
+  const { pi, loader, settingsManager } = await loadResources(cwd, loc, { bridge: true });
   const errors = [];
   const { session, extensionsResult } = await pi.createAgentSession({ cwd, agentDir: loc.data, settingsManager,
     resourceLoader: loader, sessionManager: pi.SessionManager.inMemory(cwd) });

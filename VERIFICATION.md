@@ -91,3 +91,9 @@ node tests/web-terminal-probe.mjs
 ```
 
 後兩者是明確的 live integration probe，會使用目前 Pi settings 與認證；PTY probe 只建立並關閉自己的測試終端。
+
+## 2026-11-21 extension-free resource scan regression
+
+The original `8e143a6` source failed all 10 real extension sentinel cases: resource discovery imported user extensions, inherited bridge mode loaded an adapter during scans, and worker flags reached provider children. The corrected source passes all 10. The sentinels execute at module import and extension activation for global, package and project sources. Coverage includes CLI global/workspace sync, initialize, boot, watcher refresh, both run-cli children using an ordinary Pi SDK loader, and explicit bridge creation without changing caller flags.
+
+Verification: SDK 1.0.0 full suite 61/61; SDK 1.4.0 focused extension/authority/boundary/bridge/adapter suite 21/21. The adapter test performs a real stdio MCP call; the full suite also exercises shared-memory MCP through the bridge. The GUI activation test uses the normal SDK extension loader because `loadResources()` is now an extension-free discovery API. These tests do not constitute image-level or live-provider acceptance.

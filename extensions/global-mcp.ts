@@ -5,7 +5,8 @@ import { readJSON, locations } from '../src/common.mjs';
 import path from 'node:path';
 import type { ExtensionAPI } from '@earendil-works/pi-coding-agent';
 export default function globalMcp(pi: ExtensionAPI) {
-  if (process.env.PI_SHARED_BRIDGE !== '1') return;
+  // Loaded explicitly by createRuntime(), never by a resource scan or the
+  // package's normal Pi extension entrypoint. No process-wide mode flag needed.
   const config = readJSON(path.join(locations().data, 'mcp.json'));
   if (!Object.keys(config.mcpServers || {}).length) return;
   const rename = (s: string) => `pi_global_${s}`;

@@ -10,6 +10,7 @@ import { synchronize } from '../src/sync.mjs';
 
 const [action = 'status', ...args] = process.argv.slice(2), loc = locations();
 // Resource scans in the worker must not start another bootstrap worker.
+const callerInternal = process.env.PI_SHARED_INTERNAL;
 process.env.PI_SHARED_INTERNAL = '1';
 try {
   if (action === 'enable') console.log(JSON.stringify(enableSharedPackage(loc)));
@@ -45,7 +46,10 @@ try {
     const cli = readJSON(path.join(loc.state, 'clis.json'))[name];
     const binary = cli?.binary || commandPath(name, process.env, [path.join(loc.home, '.local/pi-shared/bin')]);
     if (!binary) throw new Error('CLI missing; run initialize');
-    const child = spawn(binary, cliArgs, { stdio: 'inherit' });
+    const env = { ...process.env };
+    if (callerInternal === undefined) delete env.PI_SHARED_INTERNAL;
+    else env.PI_SHARED_INTERNAL = callerInternal;
+    const child = spawn(binary, cliArgs, { stdio: 'inherit', env });
     child.once('error', e => { console.error(safeError(e)); process.exitCode = 1; });
     for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) process.on(signal, () => child.kill(signal));
     child.once('exit', c => process.exit(c ?? 1));

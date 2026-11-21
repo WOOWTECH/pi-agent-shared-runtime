@@ -37,6 +37,7 @@ Pi Web 插件管理介面也可以安裝上述本機 package 路徑。安裝本�
 - 每 15 秒檢查 Pi 設定、全域 MCP 與技能來源；執行 CLI 前也同步目前 project。這不是定時模型對話。
 - Claude `~/.claude.json` 與 Codex `~/.codex/config.toml` 加入 `pi_shared_runtime` stdio MCP。其他設定保留，使用者修改同名 MCP 時保留並回報。
 - MCP bridge 只載入 Pi Web 全域設定的 MCP（`/data/pi-agent/mcp.json`），並只暴露這些 MCP 工具。Pi 原生 plugins/extensions 不載入、不轉換；MCP adapter 維持自己的 OAuth、憑證及工具規則，bridge 不複製憑證。
+- 資源掃描（sync、initialize、boot、watcher、CLI 啟動前同步）不 import 或執行使用者 extensions；技能仍由完整 SDK package／project 設定解析。MCP runtime 明確載入自己的 adapter，無須修改呼叫者的 bridge 環境旗標。正常 Pi provider 照常載入 extensions，`run-cli` 子程序保留呼叫者原本的 internal 旗標。
 - 技能以 Pi settings/packages 為來源；Pi Web 全域 MCP 以 `mcp.json` 為共同來源。Pi 專用 UI、快捷鍵、provider 與對話編排不在共用範圍；遠端 MCP 仍可能有認證、DNS、服務故障。報告區分設定載入與實際呼叫成功。
 - 停用／移除本 package 後自動安裝與同步暫停；idle controller 保留以偵測 GUI 重新啟用，Web 服務結束才退出，受管 launcher 仍可委派真正 Pi Web；保留 CLI、登入及既有共享項目。要清理可檢視 state 中的 owned links，勿刪除使用者自行建立的項目。
 
